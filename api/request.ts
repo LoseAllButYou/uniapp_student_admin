@@ -108,4 +108,13 @@ export const getSchoolList = () => {
 export const addNewWeek = (classId: number,week:number,name:string,weekly_json:object) => {
   return request({ url: '/stu/teacher/addWeek', method: 'POST', data: { class_id: classId,week:week ,name:name,weekly_json:weekly_json} })
 }
-	
+
+// 获取班级已有周次列表
+export const getClassWeeks = (classId: number) => {
+  return request({ url: '/stu/teacher/getClassWeeks', method: 'GET', data: { class_id: classId } })
+}
+
+// 创建班级（已存在，但需确认路径）
+export const createClass = (data: { name: string; code?: string; grade?: string; semester?: string }) => {
+  return request({ url: '/stu/teacher/createClass', method: 'POST', data })
+}

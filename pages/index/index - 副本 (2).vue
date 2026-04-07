@@ -6,8 +6,8 @@
 					<i class="fas fa-chalkboard-user"></i> 班级积分管理系统 · 积分汇总表
 				</div>
 				<div class="actions">
-					<el-button type="primary" plain @click="exportToExcel" icon="Upload">导出Excel</el-button>
-					<el-button type="success" plain @click="importExcel" icon="Download">导入Excel</el-button>
+					<el-button type="primary" plain @click="exportToExcel" icon="Download">导出Excel</el-button>
+					<el-button type="success" plain @click="importExcel" icon="Upload">导入Excel</el-button>
 					<el-button type="info" plain @click="refreshData" icon="RefreshRight">刷新数据</el-button>
 					<el-button type="warning" plain @click="showTeacherInfo" icon="User">个人信息</el-button>
 					<el-button type="danger" plain @click="logout" icon="SwitchButton">退出登录</el-button>
@@ -183,7 +183,7 @@
 	const currentWeek = ref(4)
 	const loading = ref(false)
 	const loadError = ref(false)
-	const infoMsg = "点击组别可批量加减分，点击分数可单独修改，点击 x 可添加新成员,新老师可以在个人信息栏创建班级后添加新周次，导入表格可以替换当前周数据"
+	const infoMsg = "点击组别可批量加减分，点击分数可单独修改，点击 x 可添加新成员"
 	const errorMsg = ref('')
 	const fileInput = ref(null)
 	const tableData = ref([])
@@ -439,72 +439,52 @@
 
 	// 添加新一周
 	const addNewWeek = async () => {
-	  try {
-	    await ElMessageBox.confirm('添加新一周将创建新一周数据，当前周分数将被保留。是否继续？', '提示', {
-	      confirmButtonText: '确认',
-	      cancelButtonText: '取消',
-	      type: 'warning'
-	    })
-	    if (!classInfo.value?.id) throw new Error('班级信息缺失')
-	    
-	    // 如果没有初始数据（currentWeek 为 0 或 groupsStore 为空），先初始化空表格
-	    if (currentWeek.value === 0 || groupsStore.value.length === 0) {
-	      // 创建空的小组数据（第1组到第9组）
-	      const emptyGroups = []
-	      for (let i = 1; i <= 9; i++) {
-	        emptyGroups.push({
-	          id: null, // 临时 id，后端创建时分配
-	          name: `第${i}组`,
-	          days: weekdaysOrder.map(day => ({ day, scores: [null, null, null, null, null, null, null] })),
-	          summary: { totals: [null, null, null, null, null, null, null] }
-	        })
-	      }
-	      groupsStore.value = emptyGroups
-	      // 此时 currentWeek 仍为 0，newWeek 会变成 1
-	    }
-	    
-	    const newWeek = currentWeek.value + 1
-	    // 遍历所有小组，将每天每个成员分数（非null）重置为0，构建 payload
-	    for (const group of groupsStore.value) {
-	      // 确保 days 存在，且每个 day 的 scores 为7个元素
-	      if (!group.days || group.days.length === 0) {
-	        group.days = weekdaysOrder.map(day => ({ day, scores: [null, null, null, null, null, null, null] }))
-	      }
-	      group.days.forEach(day => {
-	        for (let i = 0; i < 7; i++) {
-	          if (day.scores[i] !== null) {
-	            day.scores[i] = 0
-	          }
-	        }
-	      })
-	      const payload = {
-	        days: group.days,
-	        summary: { totals: [0, 0, 0, 0, 0, 0, 0] }
-	      }
-	      console.log(payload)
-	      const res = await AddNewWeek(classInfo.value.id, newWeek, group.name, payload)
-	      if (res.code !== 1) throw new Error(res.msg || '创建新一周失败')
-	      // 重新标准化并计算合计
-	      normalizeGroupData(group)
-	    }
-	    buildTableFromGroups()
-	    ElMessage.success('已添加新一周，数据已重置')
-	    // 刷新周次列表
-	    const weeksRes = await getClassWeeks(classInfo.value.id)
-	    if (weeksRes.code === 1) {
-	      availableWeeks.value = weeksRes.data
-	      selectedWeek.value = newWeek
-	      currentWeek.value = newWeek
-	      await loadDataByWeek(classInfo.value.id, newWeek)
-	    }
-	    ElMessage.success(`已添加第${newWeek}周`)
-	  } catch (error) {
-	    if (error !== 'cancel') {
-	      console.error('添加新一周失败', error)
-	      ElMessage.error('添加新一周失败，请检查后端接口')
-	    }
-	  }
+		try {
+			await ElMessageBox.confirm('添加新一周将创建新一周数据，当前周分数将被保留。是否继续？', '提示', {
+				confirmButtonText: '确认',
+				cancelButtonText: '取消',
+				type: 'warning'
+			})
+			if (!classInfo.value?.id) throw new Error('班级信息缺失')
+			const newWeek = currentWeek.value + 1
+			// 遍历所有小组，将每天每个成员分数（非null）重置为0
+			for (const group of groupsStore.value) {
+				group.days.forEach(day => {
+					for (let i = 0; i < 7; i++) {
+						if (day.scores[i] !== null) {
+							day.scores[i] = 0
+						}
+					}
+				})
+				const payload = {
+					days: group.days,
+					summary: { totals: [0, 0, 0, 0, 0, 0, 0] }
+				}
+				console.log(payload)
+				const res = await AddNewWeek(classInfo.value.id, newWeek, group.name, payload)
+				if (res.code !== 1) throw new Error(res.msg || '创建新一周失败')
+				// 重新标准化并计算合计
+				normalizeGroupData(group)
+			}
+			buildTableFromGroups()
+			ElMessage.success('已添加新一周，数据已重置')
+			// 刷新周次列表
+			const weeksRes = await getClassWeeks(classInfo.value.id)
+			if (weeksRes.code === 1) {
+				availableWeeks.value = weeksRes.data
+				selectedWeek.value = newWeek
+				currentWeek.value = newWeek
+				await loadDataByWeek(classInfo.value.id, newWeek)
+			}
+			ElMessage.success(`已添加第${newWeek}周`)
+		} catch (error) {
+			if (error !== 'cancel') {
+				console.error('添加新一周失败', error)
+				ElMessage.error('添加新一周失败，请检查后端接口')
+			}
+		}
 	}
+
 	// 打开创建班级弹窗
 	const openCreateClassDialog = () => {
 		createClassForm.value = { name: '', code: '', grade: '', semester: '' }

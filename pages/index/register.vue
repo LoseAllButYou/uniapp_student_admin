@@ -48,16 +48,11 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { register } from '@/api/request'
-// ...
-const res = await register({ username: form.username, password: form.password })
-if (res.code === 1) {
-  uni.setStorageSync('token', res.data.token)
-  uni.setStorageSync('userInfo', res.data.userInfo)
-  uni.showToast({ title: '登录成功' })
-  uni.reLaunch({ url: '/pages/index/index' })
-}
+import { register, getSchoolList } from '@/api/request'
+
+const router = useRouter()
 const registerFormRef = ref(null)
 const loading = ref(false)
 const schoolList = ref([])
@@ -67,7 +62,7 @@ const form = reactive({
   name: '',
   password: '',
   confirmPassword: '',
-  schoolType: 'invite', // invite 或 select
+  schoolType: 'invite',
   invite_code: '',
   school_id: null
 })
@@ -106,10 +101,9 @@ const rules = {
 // 获取学校列表（用于选择学校）
 const fetchSchoolList = async () => {
   try {
-    const res = await fetch('/api/stu/school/list')
-    const data = await res.json()
-    if (data.code === 1) {
-      schoolList.value = data.data
+    const res = await getSchoolList()
+    if (res.code === 1) {
+      schoolList.value = res.data
     }
   } catch (error) {
     console.error('获取学校列表失败', error)
@@ -122,7 +116,6 @@ const handleRegister = async () => {
     if (!valid) return
     loading.value = true
     try {
-      // 构建请求参数
       const params = {
         username: form.username,
         password: form.password,
@@ -133,12 +126,7 @@ const handleRegister = async () => {
       } else {
         params.school_id = form.school_id
       }
-      const response = await fetch('/api/stu/teacher/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params)
-      })
-      const result = await response.json()
+      const result = await register(params)
       if (result.code === 1) {
         ElMessage.success('注册成功，请登录')
         router.push('/login')
@@ -154,7 +142,7 @@ const handleRegister = async () => {
 }
 
 const goToLogin = () => {
-  router.push('/login')
+  router.push('/pages/index/login')
 }
 
 onMounted(() => {
