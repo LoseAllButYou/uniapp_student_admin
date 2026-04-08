@@ -3,706 +3,490 @@
 		<el-card class="header-card" shadow="never">
 			<div class="header-content">
 				<div class="actions">
-					<el-button type="primary" plain @click="exportToExcel" icon="Upload">导出Excel</el-button>
-					<el-button type="success" plain @click="importExcel" icon="Download">导入Excel</el-button>
-					<el-button type="info" plain @click="refreshData" icon="RefreshRight">刷新数据</el-button>
+					<el-button type="primary" plain @click="exportToExcel" icon="Upload" :disabled="!tableData.length">
+						导出Excel
+					</el-button>
+					<el-button type="success" plain @click="handleAddNewWeek" icon="Plus" :disabled="!hasWeeksData"
+						:loading="addingWeek">
+						新建周次
+					</el-button>
+					<el-button type="info" plain @click="refreshData" icon="RefreshRight" :loading="loading">
+						刷新数据
+					</el-button>
 				</div>
 			</div>
-			<div class="week-bar">
-				<el-select v-model="selectedWeek" placeholder="选择周次" style="width: 120px; margin-right: 12px;"
-					@change="onWeekSelect" :disabled="selectedWeek==0">
+			<div class="filter-bar">
+				<el-select v-model="selectedGrade" placeholder="选择年级" style="width: 140px"
+					@change="onGradeOrSemesterChange" :loading="gradeLoading" :disabled="!hasWeeksData">
+					<el-option v-for="grade in gradeOptions" :key="grade" :label="grade" :value="grade" />
+				</el-select>
+				<el-select v-model="selectedSemester" placeholder="选择学期" style="width: 120px"
+					@change="onGradeOrSemesterChange" :disabled="!hasWeeksData">
+					<el-option label="上学期" :value="1" />
+					<el-option label="下学期" :value="2" />
+				</el-select>
+				<el-select v-model="selectedWeek" placeholder="选择周次" style="width: 120px" :disabled="!hasWeeksData"
+					@change="onWeekSelect">
 					<el-option v-for="w in availableWeeks" :key="w" :label="`第${w}周`" :value="w" />
 				</el-select>
-				<el-button type="primary" @click="addNewWeek" icon="Plus">添加新一周</el-button>
+				<el-alert v-if="!hasWeeksData" title="暂无周次数据，请前往个人信息管理界面新建班级信息" type="warning" :closable="true"
+					show-icon />
 				<el-alert :title="infoMsg" type="warning" :closable="true" show-icon style="margin-left: auto;" />
 				<el-alert v-if="loadError" :title="errorMsg" type="error" :closable="true" @close="loadError = false"
 					show-icon style="margin-left: auto;" />
 			</div>
 		</el-card>
+
 		<el-card class="table-card" shadow="hover" v-loading="loading">
 			<div class="table-title">
-				<h2>{{ schoolInfo+classInfo.name }}小组管理第{{ currentWeek }}周积分汇总表</h2>
+				<h2>{{ titleText }}</h2>
 			</div>
 			<el-table :data="tableData" border stripe style="width: 100%" :span-method="spanMethod"
 				:header-cell-style="{ background: '#f5f7fa', color: '#1e293b', fontWeight: 'bold' }">
-				<el-table-column prop="groupName" label="组别" width="100" fixed="left">
-					<template #default="{ row, $index }">
-						<div class="group-name-cell" @click.stop="handleGroupClick(row.groupName, $index)">
-							{{ row.groupName }}
-						</div>
-					</template>
-				</el-table-column>
+				<el-table-column prop="groupName" label="组别" width="100" fixed="left" />
 				<el-table-column prop="day" label="时间" width="80" />
-				<el-table-column prop="member1" label="1号组员" width="85" align="center">
+				<el-table-column v-for="n in 7" :key="n" :prop="`member${n}`" :label="`${n}号组员`" width="85"
+					align="center">
 					<template #default="{ row }">
-						<span v-if="row.member1 !== null && row.member1 !== undefined" class="clickable-score"
-							@click.stop="openStudentScoreEditor(row, 1)">{{ row.member1 }}</span>
-						<span v-else class="null-score" @click.stop="addMissingMember(row, 1)">x</span>
-					</template>
-				</el-table-column>
-				<el-table-column prop="member2" label="2号组员" width="85" align="center">
-					<template #default="{ row }">
-						<span v-if="row.member2 !== null && row.member2 !== undefined" class="clickable-score"
-							@click.stop="openStudentScoreEditor(row, 2)">{{ row.member2 }}</span>
-						<span v-else class="null-score" @click.stop="addMissingMember(row, 2)">x</span>
-					</template>
-				</el-table-column>
-				<el-table-column prop="member3" label="3号组员" width="85" align="center">
-					<template #default="{ row }">
-						<span v-if="row.member3 !== null && row.member3 !== undefined" class="clickable-score"
-							@click.stop="openStudentScoreEditor(row, 3)">{{ row.member3 }}</span>
-						<span v-else class="null-score" @click.stop="addMissingMember(row, 3)">x</span>
-					</template>
-				</el-table-column>
-				<el-table-column prop="member4" label="4号组员" width="85" align="center">
-					<template #default="{ row }">
-						<span v-if="row.member4 !== null && row.member4 !== undefined" class="clickable-score"
-							@click.stop="openStudentScoreEditor(row, 4)">{{ row.member4 }}</span>
-						<span v-else class="null-score" @click.stop="addMissingMember(row, 4)">x</span>
-					</template>
-				</el-table-column>
-				<el-table-column prop="member5" label="5号组员" width="85" align="center">
-					<template #default="{ row }">
-						<span v-if="row.member5 !== null && row.member5 !== undefined" class="clickable-score"
-							@click.stop="openStudentScoreEditor(row, 5)">{{ row.member5 }}</span>
-						<span v-else class="null-score" @click.stop="addMissingMember(row, 5)">x</span>
-					</template>
-				</el-table-column>
-				<el-table-column prop="member6" label="6号组员" width="85" align="center">
-					<template #default="{ row }">
-						<span v-if="row.member6 !== null && row.member6 !== undefined" class="clickable-score"
-							@click.stop="openStudentScoreEditor(row, 6)">{{ row.member6 }}</span>
-						<span v-else class="null-score" @click.stop="addMissingMember(row, 6)">x</span>
-					</template>
-				</el-table-column>
-				<el-table-column prop="member7" label="7号组员" width="85" align="center">
-					<template #default="{ row }">
-						<span v-if="row.member7 !== null && row.member7 !== undefined" class="clickable-score"
-							@click.stop="openStudentScoreEditor(row, 7)">{{ row.member7 }}</span>
-						<span v-else class="null-score" @click.stop="addMissingMember(row, 7)">x</span>
+						<span :class="{ 'total-score': row.isSummary }">
+							{{ row[`member${n}`] !== null && row[`member${n}`] !== undefined ? row[`member${n}`] : '' }}
+						</span>
 					</template>
 				</el-table-column>
 				<el-table-column prop="groupTotal" label="小组总分" width="100" align="center">
 					<template #default="{ row }">
-						<span v-if="row.isSummary || row.groupTotal !== undefined && row.groupTotal !== ''"
-							:class="{ 'total-score': row.isSummary }">
-							{{ row.groupTotal !== undefined && row.groupTotal !== '' ? row.groupTotal : '' }}
-						</span>
+						<span :class="{ 'total-score': row.isSummary }">{{ row.groupTotal ?? '' }}</span>
 					</template>
 				</el-table-column>
 				<el-table-column prop="avgScore" label="平均分" width="90" align="center">
-					<template #default="{ row }">
-						<span
-							v-if="row.isSummary || (row.avgScore !== undefined && row.avgScore !== '')">{{ row.avgScore !== undefined ? row.avgScore : '' }}</span>
-					</template>
+					<template #default="{ row }">{{ row.avgScore ?? '' }}</template>
 				</el-table-column>
 				<el-table-column prop="rank" label="排名" width="80" align="center">
 					<template #default="{ row }">
-						<el-tag v-if="row.rank && row.rank !== ''" :type="getRankType(row.rank)"
-							size="small">{{ row.rank }}</el-tag>
+						<el-tag v-if="row.rank" :type="getRankType(row.rank)" size="small">{{ row.rank }}</el-tag>
 					</template>
 				</el-table-column>
 			</el-table>
+			<div v-if="!tableData.length && !loading" class="empty-placeholder">
+				<el-empty description="暂无积分数据，请先到学生管理页面为本周添加积分" />
+			</div>
 		</el-card>
-
-		<!-- 个人加减分弹窗 -->
-		<el-dialog v-model="personalDialog.visible" title="修改个人分数" width="400px">
-			<div class="score-buttons">
-				<el-button v-for="val in scoreValues" :key="val"
-					:type="val === 0 ? 'info' : (val > 0 ? 'success' : 'danger')" size="small"
-					@click="confirmPersonalChange(val)">
-					{{ val > 0 ? '+' : '' }}{{ val }}
-				</el-button>
-			</div>
-		</el-dialog>
-
-		<!-- 小组批量加减分弹窗 -->
-		<el-dialog v-model="groupDialog.visible" title="小组批量加减分" width="400px">
-			<div class="score-buttons">
-				<el-button v-for="val in scoreValues" :key="val"
-					:type="val === 0 ? 'info' : (val > 0 ? 'success' : 'danger')" size="small"
-					@click="confirmGroupChange(val)">
-					{{ val > 0 ? '+' : '' }}{{ val }}
-				</el-button>
-			</div>
-		</el-dialog>
-
-		<!-- 隐藏文件上传 -->
-		<input type="file" ref="fileInput" style="display:none" accept=".xlsx,.xls" @change="handleFileUpload" />
 	</div>
 </template>
 
 <script setup lang="ts">
-	import { ref, onMounted } from 'vue'
+	import { ref, onMounted, computed } from 'vue'
 	import { ElMessage, ElMessageBox } from 'element-plus'
 	import * as XLSX from 'xlsx'
-	import { getGroups, updateGroupScore, getClasses, getTeacherInfo, addNewWeek as AddNewWeek, getClassWeeks, createClass } from '@/api/request'
+	import { getGroupsScores, getClassWeeks, getClasses, addNewWeek } from '@/api/request'
 
-	// 学校信息（显示用）
+	// ---------- 类型定义 ----------
+	interface ScoreRow {
+		groupName : string
+		day : string
+		isSummary : boolean
+		groupId : string | number
+		member1 ?: number | string
+		member2 ?: number | string
+		member3 ?: number | string
+		member4 ?: number | string
+		member5 ?: number | string
+		member6 ?: number | string
+		member7 ?: number | string
+		groupTotal ?: number | string
+		avgScore ?: number | string
+		rank ?: number | string
+	}
+
+	interface GroupData {
+		id : number
+		name : string
+		days : Array<{ day : string; scores : (number | null)[] }>
+		summary : { totals : (number | null)[] }
+	}
+
+	// ---------- 响应式数据 ----------
 	const schoolInfo = ref('')
-	const currentWeek = ref(4)
-	const loading = ref(false)
-	const loadError = ref(false)
-	const infoMsg = "点击组别可批量加减分，点击分数可单独修改，点击 x 可添加新成员,新老师可以在个人信息栏创建班级后添加新周次，导入表格可以替换当前周数据"
-	const errorMsg = ref('')
-	const fileInput = ref(null)
-	const tableData = ref([])
-	const classInfo = ref(null)
-	const groupsStore = ref([])
+	const classInfo = ref<any>(null)
 
-	// 周次下拉相关变量
+	// 筛选条件
+	const selectedGrade = ref('')
+	const selectedSemester = ref<number | null>(null)
 	const selectedWeek = ref(0)
 	const availableWeeks = ref<number[]>([])
+	const gradeOptions = ref<string[]>([])
+	const gradeLoading = ref(false)
 
-	const scoreValues = [-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+	// 表格数据
+	const tableData = ref<ScoreRow[]>([])
+	const groupsStore = ref<GroupData[]>([])
+	const loading = ref(false)
+	const loadError = ref(false)
+	const errorMsg = ref('')
+	const addingWeek = ref(false) // 新建周次加载状态
 
-	const personalDialog = ref({ visible: false, row: null, memberNumber: null, currentScore: null })
-	const groupDialog = ref({ visible: false, groupName: null, targetDay: null })
-
-	// 星期顺序常量
+	const infoMsg = "数据来源学生积分表，如需修改积分请到学生管理页面操作"
 	const weekdaysOrder = ['周一', '周二', '周三', '周四', '周五']
 
-	// 更新小组合计行
-	const updateGroupSummary = (group) => {
-		const totals = [null, null, null, null, null, null, null]
-		group.days.forEach(day => {
-			for (let i = 0; i < 7; i++) {
-				const score = day.scores[i]
-				if (score !== null && !isNaN(score)) {
-					if (totals[i] === null) totals[i] = 0
-					totals[i] += score
-				}
-			}
-		})
-		group.summary.totals = totals
+	// 年级排序优先级（数值越小年级越低）
+	const gradeOrder : Record<string, number> = {
+		'一年级': 1, '二年级': 2, '三年级': 3, '四年级': 4, '五年级': 5, '六年级': 6,
+		'初一': 7, '初二': 8, '初三': 9,
+		'高一': 10, '高二': 11, '高三': 12
+	}
+
+	// ---------- 计算属性 ----------
+	const semesterText = computed(() => selectedSemester.value === 1 ? '上学期' : '下学期')
+	const titleText = computed(() => {
+		if (!classInfo.value) return '积分汇总表'
+		return `${schoolInfo.value} ${classInfo.value.name} ${selectedGrade.value} ${semesterText.value} 第${currentWeek.value}周 积分汇总表`
+	})
+	const currentWeek = computed(() => selectedWeek.value)
+	const hasWeeksData = computed(() => availableWeeks.value.length > 0)
+
+	// ---------- 辅助函数 ----------
+	const hasAnyScore = (days : GroupData['days'], memberIdx : number) : boolean => {
+		return days.some(day => day.scores[memberIdx] !== null && day.scores[memberIdx] !== 0)
 	}
 
 	// 标准化小组数据
-	const normalizeGroupData = (group) => {
+	const normalizeGroupData = (group : GroupData) : GroupData => {
 		const normalizedDays = weekdaysOrder.map(weekday => {
 			const existing = group.days.find(d => d.day === weekday)
-			const scores = Array(7).fill(null)
+			const scores = Array(7).fill(null) as (number | null)[]
 			if (existing && Array.isArray(existing.scores)) {
 				for (let i = 0; i < Math.min(existing.scores.length, 7); i++) {
-					scores[i] = existing.scores[i] === undefined ? null : existing.scores[i]
+					scores[i] = existing.scores[i] ?? null
 				}
 			}
 			return { day: weekday, scores }
 		})
-		group.days = normalizedDays
-		updateGroupSummary(group)
-		return group
+
+		// 重新计算小组合计
+		const totals = Array(7).fill(0) as (number | null)[]
+		normalizedDays.forEach(day => {
+			for (let i = 0; i < 7; i++) {
+				if (day.scores[i] !== null) {
+					totals[i] = (totals[i] || 0) + day.scores[i]!
+				}
+			}
+		})
+		// 将没有有效分数的成员设为 null
+		for (let i = 0; i < 7; i++) {
+			if (totals[i] === 0 && !hasAnyScore(normalizedDays, i)) {
+				totals[i] = null
+			}
+		}
+
+		return {
+			...group,
+			days: normalizedDays,
+			summary: { totals }
+		}
 	}
 
 	// 计算小组总分和平均分
-	const calculateGroupScores = (group) => {
-		const existingTotals = group.summary.totals.filter(t => t !== null && t !== undefined)
-		const groupTotal = existingTotals.reduce((sum, val) => sum + val, 0)
-		const memberCount = existingTotals.length
+	const calculateGroupScores = (group : GroupData) => {
+		const totals = group.summary.totals
+		const validTotals = totals.filter(t => t !== null && t !== undefined) as number[]
+		const groupTotal = validTotals.reduce((sum, val) => sum + val, 0)
+		const memberCount = validTotals.length
 		const avgScore = memberCount > 0 ? (groupTotal / memberCount).toFixed(2) : '0.00'
-		return { groupTotal, avgScore, memberCount }
+		return { groupTotal, avgScore }
 	}
 
-	// 添加缺失成员
-	const addMissingMember = (row, memberNumber) => {
-		ElMessageBox.confirm(`是否添加 ${row.groupName} 的 ${memberNumber} 号组员？添加后所有天的分数将初始化为 0 分。`, '添加新成员', {
-			confirmButtonText: '确认添加',
-			cancelButtonText: '取消',
-			type: 'info'
-		}).then(() => {
-			const group = groupsStore.value.find(g => g.name === row.groupName)
-			if (!group) return
-			group.days.forEach(day => {
-				day.scores[memberNumber - 1] = 0
-			})
-			normalizeGroupData(group)
-			buildTableFromGroups()
-			saveCurrentData()
-			ElMessage.success(`已添加 ${row.groupName} ${memberNumber}号组员，初始分数为 0`)
-		}).catch(() => { })
-	}
-
-
-	// 按周次加载数据
-	const loadDataByWeek = async (classId : number, week : number) => {
-		const groupsRes = await getGroups(classId, week)
-		if (groupsRes.code !== 1) throw new Error(groupsRes.msg || '获取小组数据失败')
-		const toNumberOrNull = (val : any) : number | null => {
-			if (val === null || val === undefined || val === '') return null
-			if (typeof val === 'number') return isNaN(val) ? null : val
-			if (typeof val === 'string') {
-				const trimmed = val.trim()
-				if (trimmed === '' || trimmed.toLowerCase() === 'x') return null
-				const num = Number(trimmed)
-				return isNaN(num) ? null : num
-			}
-			return null
+	// 构建表格显示数据
+	const buildTableFromGroups = () => {
+		if (!groupsStore.value.length) {
+			tableData.value = []
+			return
 		}
-		const processGroupData = (group : any) => {
-			let jsonData = null
-			try {
-				jsonData = group.weekly_score_json ? JSON.parse(group.weekly_score_json) : null
-			} catch (e) { }
-			if (!jsonData) {
-				jsonData = {
-					days: weekdaysOrder.map(day => ({ day, scores: [null, null, null, null, null, null, null] })),
-					summary: { totals: [null, null, null, null, null, null, null] }
+
+		// 计算每个小组的总分和平均分用于排名
+		const groupStats = groupsStore.value.map(group => {
+			const { groupTotal, avgScore } = calculateGroupScores(group)
+			return { groupName: group.name, groupTotal, avgScore }
+		})
+		groupStats.sort((a, b) => b.groupTotal - a.groupTotal)
+		const rankMap = new Map<string, number>()
+		groupStats.forEach((item, idx) => rankMap.set(item.groupName, idx + 1))
+
+		const data : ScoreRow[] = []
+		groupsStore.value.forEach(group => {
+			// 每天的数据行
+			group.days.forEach((dayData, idx) => {
+				const row : ScoreRow = {
+					groupName: group.name,
+					day: dayData.day,
+					isSummary: false,
+					groupId: group.name
 				}
-			}
-			const processedDays = (jsonData.days || []).map((dayItem : any) => {
-				const scores = (dayItem.scores || []).slice(0, 7).map((s : any) => toNumberOrNull(s))
-				while (scores.length < 7) scores.push(null)
-				return { day: dayItem.day, scores }
+				for (let i = 1; i <= 7; i++) {
+					const val = dayData.scores[i - 1]
+					row[`member${i}` as keyof ScoreRow] = val !== null ? val : ''
+				}
+				// 只在第一行显示小组总分、平均分、排名
+				if (idx === 0) {
+					const stats = groupStats.find(g => g.groupName === group.name)!
+					row.groupTotal = stats.groupTotal
+					row.avgScore = stats.avgScore
+					row.rank = rankMap.get(group.name) || ''
+				} else {
+					row.groupTotal = ''
+					row.avgScore = ''
+					row.rank = ''
+				}
+				data.push(row)
 			})
-			const finalDays = weekdaysOrder.map(weekday => {
-				const existing = processedDays.find(d => d.day === weekday)
-				return existing || { day: weekday, scores: [null, null, null, null, null, null, null] }
-			})
-			const rawTotals = (jsonData.summary?.totals || []).slice(0, 7).map((t : any) => toNumberOrNull(t))
-			while (rawTotals.length < 7) rawTotals.push(null)
-			return {
-				id: group.id,
-				name: group.name,
-				days: finalDays,
-				summary: { totals: rawTotals }
+
+			// 合计行
+			const summaryRow : ScoreRow = {
+				groupName: group.name,
+				day: '合计',
+				isSummary: true,
+				groupId: group.name,
+				groupTotal: '',
+				avgScore: '',
+				rank: ''
 			}
-		}
-		const groups = groupsRes.data.map(processGroupData)
-		groupsStore.value = groups.map(g => normalizeGroupData(g))
-		buildTableFromGroups()
+			for (let i = 1; i <= 7; i++) {
+				const val = group.summary.totals[i - 1]
+				summaryRow[`member${i}` as keyof ScoreRow] = val !== null ? val : ''
+			}
+			data.push(summaryRow)
+		})
+		tableData.value = data
 	}
 
-	// 从后端加载数据
-	const fetchDataFromAPI = async () => {
-		loading.value = true
-		loadError.value = false
-		try {
-			// 从本地存储获取班级信息（由 index.vue 存入）
-			const storedClass = uni.getStorageSync('currentClass')
-			if (!storedClass) {
-				// 如果本地没有，尝试调用接口获取
-				const classRes = await getClasses()
-				if (classRes.code !== 1 || !classRes.data.length) throw new Error('暂无班级数据')
-				const currentClass = classRes.data[0]
-				classInfo.value = currentClass
-				uni.setStorageSync('currentClass', currentClass)
-			} else {
-				classInfo.value = storedClass
-			}
+	// ---------- 数据加载 ----------
+	// 获取班级信息
+	const initClassInfo = async () => {
+		const classes = await uni.getStorageSync('teacherInfo').classes
+		const currentClassId = await uni.getStorageSync('currentClassId')
+		if (classes.length && currentClassId) {
+			classInfo.value = classes.filter(item => item.id == currentClassId)[0];
+		}
+		else {
+			ElMessage.warning('请先选择班级')
+			throw new Error('未找到班级信息')
+		}
+	}
 
-			// 获取班级已有周次列表
-			const weeksRes = await getClassWeeks(classInfo.value.id)
-			if (weeksRes.code === 1) {
-				availableWeeks.value = weeksRes.data
+	// 获取年级选项（从教师所教班级中提取年级，去重并按等级排序）
+	const loadGradeOptions = async () => {
+		if (!classInfo.value?.id) return
+		gradeLoading.value = true
+		try {
+			const res = await getClasses()
+			if (res.code === 1 && Array.isArray(res.data)) {
+				// 提取所有年级，去重，并按 gradeOrder 排序
+				const grades = [...new Set(res.data.map((cls : any) => cls.grade).filter(Boolean))] as string[]
+				grades.sort((a, b) => (gradeOrder[a] || 99) - (gradeOrder[b] || 99))
+				gradeOptions.value = grades
+				if (gradeOptions.value.length) {
+					// 默认选中最高年级（排序后的最后一个）
+					selectedGrade.value = gradeOptions.value[gradeOptions.value.length - 1]
+				} else {
+					// 降级使用默认列表
+					gradeOptions.value = ['一年级', '二年级', '三年级', '四年级', '五年级', '六年级', '初一', '初二', '初三', '高一', '高二', '高三']
+					selectedGrade.value = gradeOptions.value[gradeOptions.value.length - 1]
+				}
+			} else {
+				gradeOptions.value = ['一年级', '二年级', '三年级', '四年级', '五年级', '六年级', '初一', '初二', '初三', '高一', '高二', '高三']
+				selectedGrade.value = gradeOptions.value[gradeOptions.value.length - 1]
+			}
+		} catch (error) {
+			console.error('获取年级列表失败', error)
+			gradeOptions.value = ['一年级', '二年级', '三年级', '四年级', '五年级', '六年级', '初一', '初二', '初三', '高一', '高二', '高三']
+			selectedGrade.value = gradeOptions.value[gradeOptions.value.length - 1]
+		} finally {
+			gradeLoading.value = false
+		}
+	}
+
+	// 加载周次列表
+	const loadWeeks = async () => {
+		if (!classInfo.value?.id || !selectedGrade.value || !selectedSemester.value) return
+		loading.value = true
+		try {
+			const res = await getClassWeeks(classInfo.value.id)
+			if (res.code === 1) {
+				availableWeeks.value = (res.data as number[]).sort((a, b) => a - b)
 				if (availableWeeks.value.length) {
-					const latestWeek = availableWeeks.value[availableWeeks.value.length - 1]
-					selectedWeek.value = latestWeek
-					currentWeek.value = latestWeek
-					await loadDataByWeek(classInfo.value.id, latestWeek)
+					selectedWeek.value = Math.max(...availableWeeks.value) // 最新周
+					await loadGroupScores()
 				} else {
 					selectedWeek.value = 0
-					currentWeek.value = 0
-					await loadDataByWeek(classInfo.value.id, 1)
+					tableData.value = []
+					// 无周次数据时不清空 groupsStore，但禁用选择器
 				}
 			} else {
-				throw new Error('获取周次列表失败')
+				throw new Error(res.msg || '获取周次失败')
 			}
-			ElMessage.success('数据加载成功')
-		} catch (error) {
-			console.error('数据加载失败:', error)
-			loadError.value = true
-			errorMsg.value = '从服务器获取数据失败，请导入Excel文件'
-			ElMessageBox.confirm('无法从服务器获取数据，是否从本地Excel导入初始数据？', '提示', {
-				confirmButtonText: '导入Excel',
-				cancelButtonText: '取消',
-				type: 'warning'
-			}).then(() => {
-				importExcel()
-			}).catch(() => { })
+		} catch (error : any) {
+			console.error('加载周次失败', error)
+			ElMessage.error(error.message || '加载周次列表失败')
+			availableWeeks.value = []
+			selectedWeek.value = 0
+			tableData.value = []
 		} finally {
 			loading.value = false
 		}
 	}
 
-	// 周次下拉选择事件
-	const onWeekSelect = async () => {
-		if (!selectedWeek.value || !classInfo.value?.id) return
-		currentWeek.value = selectedWeek.value
-		await loadDataByWeek(classInfo.value.id, selectedWeek.value)
-		ElMessage.success(`已切换到第${selectedWeek.value}周`)
-	}
-
-	// 保存当前所有小组数据到后端
-	const saveCurrentData = async () => {
+	// 加载小组积分数据
+	const loadGroupScores = async () => {
+		if (!classInfo.value?.id || !selectedGrade.value || !selectedSemester.value || !selectedWeek.value) return
+		loading.value = true
+		loadError.value = false
 		try {
-			for (const group of groupsStore.value) {
-				if (!group.id) {
-					console.error('小组缺少 id，无法保存', group)
-					ElMessage.warning(`小组 ${group.name} 缺少数据库ID，请先刷新页面或重新初始化小组`)
-					continue
-				}
-				const payload = {
-					days: group.days,
-					summary: group.summary
-				}
-				await updateGroupScore(group.id, payload)
+			const res = await getGroupsScores({
+				classId: classInfo.value.id,
+				grade: selectedGrade.value,
+				semester: selectedSemester.value,
+				week: selectedWeek.value
+			})
+			if (res.code !== 1) throw new Error(res.msg || '获取数据失败')
+			if (!res.data.groups || !res.data.groups.length) {
+				tableData.value = []
+				groupsStore.value = []
+				ElMessage.info('当前无小组数据，请先创建小组并添加学生')
+				return
 			}
-		} catch (error) {
-			console.error('保存数据失败', error)
-			ElMessage.warning('部分数据未能保存到服务器')
+			groupsStore.value = res.data.groups.map((group : GroupData) => normalizeGroupData(group))
+			buildTableFromGroups()
+		} catch (error : any) {
+			console.error('加载小组积分失败', error)
+			loadError.value = true
+			errorMsg.value = error.message || '数据加载失败'
+			tableData.value = []
+		} finally {
+			loading.value = false
 		}
 	}
 
-	// 添加新一周
-	const addNewWeek = async () => {
+	// ---------- 新建周次 ----------
+	const handleAddNewWeek = async () => {
+		if (!hasWeeksData.value) {
+			ElMessage.warning('暂无周次数据，无法新建，请前往个人信息管理界面新建班级信息')
+			return
+		}
+		if (!groupsStore.value.length) {
+			ElMessage.warning('当前没有小组数据，无法新建周次')
+			return
+		}
 		try {
-			await ElMessageBox.confirm('添加新一周将创建新一周数据，当前周分数将被保留。是否继续？', '提示', {
+			await ElMessageBox.confirm('新建周次将基于当前周的小组结构创建下一周数据（所有成员分数初始化为0），是否继续？', '提示', {
 				confirmButtonText: '确认',
 				cancelButtonText: '取消',
-				type: 'warning'
+				type: 'info'
 			})
-			if (!classInfo.value?.id) throw new Error('班级信息缺失')
+		} catch {
+			return
+		}
 
-			if (currentWeek.value === 0 || groupsStore.value.length === 0) {
-				const emptyGroups = []
-				for (let i = 1; i <= 9; i++) {
-					emptyGroups.push({
-						id: null,
-						name: `第${i}组`,
-						days: weekdaysOrder.map(day => ({ day, scores: [null, null, null, null, null, null, null] })),
-						summary: { totals: [null, null, null, null, null, null, null] }
-					})
+		addingWeek.value = true
+		try {
+			const maxWeek = Math.max(...availableWeeks.value)
+			const newWeek = maxWeek + 1
+
+			// 为每个小组构建新一周的数据（复制当前周的 days 结构，分数置0）
+			const promises = groupsStore.value.map(async (group) => {
+				// 构建新的 days 数组：每个 day 的 scores 中，非 null 的改为 0，null 保持不变
+				const newDays = group.days.map(day => ({
+					day: day.day,
+					scores: day.scores.map(score => (score !== null ? 0 : null))
+				}))
+				const weeklyJson = {
+					days: newDays,
+					summary: { totals: Array(7).fill(0) } // 初始合计为0
 				}
-				groupsStore.value = emptyGroups
+				return addNewWeek(classInfo.value.id, newWeek, group.name, weeklyJson)
+			})
+
+			const results = await Promise.all(promises)
+			const failed = results.some(res => res.code !== 1)
+			if (failed) {
+				throw new Error('部分小组新建周次失败')
 			}
 
-			const newWeek = currentWeek.value + 1
-			for (const group of groupsStore.value) {
-				if (!group.days || group.days.length === 0) {
-					group.days = weekdaysOrder.map(day => ({ day, scores: [null, null, null, null, null, null, null] }))
-				}
-				group.days.forEach(day => {
-					for (let i = 0; i < 7; i++) {
-						if (day.scores[i] !== null) {
-							day.scores[i] = 0
-						}
-					}
-				})
-				const payload = {
-					days: group.days,
-					summary: { totals: [0, 0, 0, 0, 0, 0, 0] }
-				}
-				const res = await AddNewWeek(classInfo.value.id, newWeek, group.name, payload)
-				if (res.code !== 1) throw new Error(res.msg || '创建新一周失败')
-				normalizeGroupData(group)
-			}
-			buildTableFromGroups()
-			const weeksRes = await getClassWeeks(classInfo.value.id)
-			if (weeksRes.code === 1) {
-				availableWeeks.value = weeksRes.data
+			ElMessage.success(`成功创建第 ${newWeek} 周`)
+			// 刷新周次列表
+			await loadWeeks()
+			// 自动切换到新周次
+			if (availableWeeks.value.includes(newWeek)) {
 				selectedWeek.value = newWeek
-				currentWeek.value = newWeek
-				await loadDataByWeek(classInfo.value.id, newWeek)
+				await loadGroupScores()
 			}
-			ElMessage.success(`已添加第${newWeek}周`)
-		} catch (error) {
-			if (error !== 'cancel') {
-				console.error('添加新一周失败', error)
-				ElMessage.error('添加新一周失败，请检查后端接口')
-			}
+		} catch (error : any) {
+			console.error('新建周次失败', error)
+			ElMessage.error(error.message || '新建周次失败，请稍后重试')
+		} finally {
+			addingWeek.value = false
 		}
 	}
 
-	// 从导入的Excel构建内部数据结构
-	const parseExcelToGroups = (workbook, existingGroups = []) => {
-		const sheet = workbook.Sheets[workbook.SheetNames[0]]
-		const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })
-		if (!rows || rows.length < 3) throw new Error('文件格式不正确')
-		const groups = []
-		let currentGroup = null
-		for (let i = 2; i < rows.length; i++) {
-			const row = rows[i]
-			if (!row || row.length < 2) continue
-			let groupName = row[0] ? row[0].toString().trim() : ""
-			let dayText = row[1] ? row[1].toString().trim() : ""
-			if (groupName && !groupName.includes('合计') && weekdaysOrder.includes(dayText)) {
-				if (currentGroup) groups.push(currentGroup)
-				currentGroup = {
-					name: groupName,
-					days: [],
-					summary: { totals: [null, null, null, null, null, null, null] }
-				}
-			}
-			if (currentGroup) {
-				if (dayText === '合计') {
-					for (let no = 1; no <= 7; no++) {
-						const val = row[2 + (no - 1)]
-						if (val !== undefined && val !== '' && val !== 'x') {
-							currentGroup.summary.totals[no - 1] = parseFloat(val) || 0
-						} else {
-							currentGroup.summary.totals[no - 1] = null
-						}
-					}
-				} else if (weekdaysOrder.includes(dayText)) {
-					const scores = []
-					for (let no = 1; no <= 7; no++) {
-						let val = row[2 + (no - 1)]
-						if (val === undefined || val === '' || val === 'x') {
-							scores.push(null)
-						} else {
-							const num = parseFloat(val)
-							scores.push(isNaN(num) ? null : num)
-						}
-					}
-					currentGroup.days.push({ day: dayText, scores })
-				}
-			}
-		}
-		if (currentGroup) groups.push(currentGroup)
-		const allGroupNames = ['第1组', '第2组', '第3组', '第4组', '第5组', '第6组', '第7组', '第8组', '第9组']
-		const existingNames = groups.map(g => g.name)
-		for (const name of allGroupNames) {
-			if (!existingNames.includes(name)) {
-				groups.push({
-					name: name,
-					days: weekdaysOrder.map(day => ({ day, scores: [null, null, null, null, null, null, null] })),
-					summary: { totals: [null, null, null, null, null, null, null] }
-				})
-			}
-		}
-		groups.sort((a, b) => (parseInt(a.name.replace(/\D/g, '')) || 0) - (parseInt(b.name.replace(/\D/g, '')) || 0))
-		const groupsWithId = groups.map(newGroup => {
-			const existing = existingGroups.find(old => old.name === newGroup.name)
-			return {
-				id: existing ? existing.id : null,
-				name: newGroup.name,
-				days: newGroup.days,
-				summary: newGroup.summary
-			}
-		})
-		const finalGroups = groupsWithId.map(group => normalizeGroupData(group))
-		return finalGroups
+	// ---------- 事件处理 ----------
+	const onGradeOrSemesterChange = async () => {
+		if (!selectedGrade.value || !selectedSemester.value) return
+		await loadWeeks()
 	}
 
-	// 导入Excel
-	const importExcel = () => {
-		if (typeof uni !== 'undefined' && uni.chooseFile) {
-			uni.chooseFile({
-				count: 1,
-				type: 'file',
-				extension: ['xlsx', 'xls'],
-				success: (res) => {
-					const filePath = res.tempFiles[0]
-					handleFileUpload(filePath)
-				},
-				fail: (error) => {
-					console.error('选择文件失败:', error)
-					fileInput.value.click()
-				}
-			})
+	const onWeekSelect = async () => {
+		if (selectedWeek.value) {
+			await loadGroupScores()
+		}
+	}
+
+	const refreshData = () => {
+		if (selectedWeek.value) {
+			loadGroupScores()
 		} else {
-			fileInput.value.click()
+			loadWeeks()
 		}
-	}
-
-	const handleFileUpload = (fileOrEvent) => {
-		let file
-		if (fileOrEvent instanceof File) {
-			file = fileOrEvent
-		} else if (fileOrEvent && fileOrEvent.target) {
-			file = fileOrEvent.target.files[0]
-		} else {
-			file = fileOrEvent
-		}
-		if (!file) return
-		const reader = new FileReader()
-		reader.onload = async (e) => {
-			const data = new Uint8Array(e.target.result)
-			const workbook = XLSX.read(data, { type: 'array' })
-			try {
-				const groups = parseExcelToGroups(workbook, groupsStore.value)
-				groupsStore.value = groups
-				buildTableFromGroups()
-				await saveCurrentData()
-				ElMessage.success('导入成功')
-				loadError.value = false
-			} catch (err) {
-				ElMessage.error('解析文件失败：' + err.message)
-			} finally {
-				if (fileInput.value) fileInput.value.value = ''
-			}
-		}
-		reader.readAsArrayBuffer(file)
 	}
 
 	// 导出Excel
 	const exportToExcel = () => {
+		if (!tableData.value.length) {
+			ElMessage.warning('暂无数据可导出')
+			return
+		}
 		const exportData : any[][] = []
-		exportData.push([`${schoolInfo.value}${classInfo.value.name}小组管理第${currentWeek.value}周积分汇总表`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
-		exportData.push(['组别', '时间', '1号组员', '2号组员', '3号组员', '4号组员', '5号组员', '6号组员', '7号组员', '小组总分', '平均分', '排名', '', '', '', '', ''])
+		const title = `${schoolInfo.value}${classInfo.value.name} ${selectedGrade.value}${semesterText.value} 第${currentWeek.value}周积分汇总表`
+		exportData.push([title, '', '', '', '', '', '', '', '', '', '', ''])
+		exportData.push(['组别', '时间', '1号组员', '2号组员', '3号组员', '4号组员', '5号组员', '6号组员', '7号组员', '小组总分', '平均分', '排名'])
 
-		const groupScores = groupsStore.value.map(group => {
-			const { groupTotal, avgScore } = calculateGroupScores(group)
-			return { groupName: group.name, groupTotal, avgScore }
-		})
-		groupScores.sort((a, b) => b.groupTotal - a.groupTotal)
-		const rankMap = new Map()
-		groupScores.forEach((item, idx) => rankMap.set(item.groupName, idx + 1))
-
-		groupsStore.value.forEach(group => {
-			group.days.forEach((dayData, idx) => {
-				const row = []
-				if (idx === 0) row.push(group.name)
-				else row.push('')
-				row.push(dayData.day)
-				for (let i = 0; i < 7; i++) {
-					const val = dayData.scores[i]
-					row.push(val !== null ? val : '')
-				}
-				if (idx === 0) {
-					const groupTotal = groupScores.find(g => g.groupName === group.name)?.groupTotal ?? 0
-					const avgScore = groupScores.find(g => g.groupName === group.name)?.avgScore ?? '0.00'
-					const rank = rankMap.get(group.name) ?? ''
-					row.push(groupTotal, avgScore, rank)
-				} else {
-					row.push('', '', '')
-				}
-				exportData.push(row)
-			})
-			const summaryRow = ['', '合计']
-			for (let i = 0; i < 7; i++) {
-				const val = group.summary.totals[i]
-				summaryRow.push(val !== null ? val : '')
-			}
-			summaryRow.push('', '', '')
-			exportData.push(summaryRow)
-			exportData.push([])
+		tableData.value.forEach(row => {
+			const line = [
+				row.groupName,
+				row.day,
+				row.member1 ?? '', row.member2 ?? '', row.member3 ?? '', row.member4 ?? '',
+				row.member5 ?? '', row.member6 ?? '', row.member7 ?? '',
+				row.groupTotal ?? '', row.avgScore ?? '', row.rank ?? ''
+			]
+			exportData.push(line)
 		})
 
-		if (groupsStore.value.length === 0) {
-			exportData.push(['暂无小组数据', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
-		}
-
-		let XLSXLib = XLSX
-		let useStyle = false
-		const wb = XLSXLib.utils.book_new()
-		const ws = XLSXLib.utils.aoa_to_sheet(exportData)
-
-		const merges : any[] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }]
-		let currentRow = 2
-		groupsStore.value.forEach(group => {
-			const rowspan = group.days.length + 1
-			merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow + rowspan - 1, c: 0 } })
-			currentRow += rowspan + 1
-		})
-		ws['!merges'] = merges
-
-		ws['!cols'] = [
-			{ wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
-			{ wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 10 },
-			{ wch: 8 }, { wch: 6 }
-		]
-
-		if (useStyle) {
-			const range = XLSXLib.utils.decode_range(ws['!ref'] || 'A1')
-			for (let R = range.s.r; R <= range.e.r; ++R) {
-				for (let C = range.s.c; C <= range.e.c; ++C) {
-					const cellAddress = XLSXLib.utils.encode_cell({ r: R, c: C })
-					if (!ws[cellAddress]) continue
-					if (!ws[cellAddress].t) ws[cellAddress].t = 's'
-					const style : any = { alignment: { horizontal: 'center', vertical: 'center' } }
-					if (R === 0) style.font = { sz: 18, bold: true }
-					else if (R === 1) style.font = { bold: true }
-					ws[cellAddress].s = style
-				}
-			}
-		}
-
-		XLSXLib.utils.book_append_sheet(wb, ws, `第${currentWeek.value}周积分表`)
-		try {
-			XLSXLib.writeFile(wb, `班级第${currentWeek.value}周积分汇总表.xlsx`)
-			ElMessage.success('导出成功')
-		} catch (err) {
-			console.error('导出失败', err)
-			ElMessage.error('导出失败，请重试')
-		}
+		const wb = XLSX.utils.book_new()
+		const ws = XLSX.utils.aoa_to_sheet(exportData)
+		ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }]
+		ws['!cols'] = [{ wch: 12 }, { wch: 8 }, ...Array(7).fill({ wch: 8 }), { wch: 10 }, { wch: 8 }, { wch: 6 }]
+		XLSX.utils.book_append_sheet(wb, ws, `第${currentWeek.value}周积分表`)
+		const fileName = `${classInfo.value.name}_${selectedGrade.value}_${semesterText.value}_第${currentWeek.value}周积分表.xlsx`
+		XLSX.writeFile(wb, fileName)
+		ElMessage.success('导出成功')
 	}
 
-	const buildTableFromGroups = () => {
-		groupsStore.value = groupsStore.value.map(group => normalizeGroupData(group))
-		const groupScores = groupsStore.value.map(group => {
-			const { groupTotal, avgScore } = calculateGroupScores(group)
-			return { groupName: group.name, groupTotal, avgScore }
-		})
-		groupScores.sort((a, b) => b.groupTotal - a.groupTotal)
-		const rankMap = new Map()
-		groupScores.forEach((item, idx) => rankMap.set(item.groupName, idx + 1))
-		const data = []
-		groupsStore.value.forEach(group => {
-			const groupRows = []
-			const days = group.days || []
-			days.forEach(dayData => {
-				const scores = dayData.scores || Array(7).fill(null)
-				const row = {
-					groupName: group.name,
-					day: dayData.day,
-					member1: scores[0] ?? null,
-					member2: scores[1] ?? null,
-					member3: scores[2] ?? null,
-					member4: scores[3] ?? null,
-					member5: scores[4] ?? null,
-					member6: scores[5] ?? null,
-					member7: scores[6] ?? null,
-					groupTotal: '',
-					avgScore: '',
-					rank: '',
-					isSummary: false,
-					groupId: group.name
-				}
-				groupRows.push(row)
-			})
-			const totals = group.summary?.totals || Array(7).fill(null)
-			const summaryRow = {
-				groupName: group.name,
-				day: '合计',
-				member1: totals[0] ?? '',
-				member2: totals[1] ?? '',
-				member3: totals[2] ?? '',
-				member4: totals[3] ?? '',
-				member5: totals[4] ?? '',
-				member6: totals[5] ?? '',
-				member7: totals[6] ?? '',
-				groupTotal: '',
-				avgScore: '',
-				rank: '',
-				isSummary: true,
-				groupId: group.name
-			}
-			groupRows.push(summaryRow)
-			data.push(...groupRows)
-		})
-		groupsStore.value.forEach(group => {
-			const groupTotal = groupScores.find(g => g.groupName === group.name)?.groupTotal ?? 0
-			const avgScore = groupScores.find(g => g.groupName === group.name)?.avgScore ?? '0.00'
-			const rank = rankMap.get(group.name) ?? ''
-			const firstRowIndex = data.findIndex(row => row.groupId === group.name && row.day === '周一')
-			if (firstRowIndex !== -1) {
-				data[firstRowIndex].groupTotal = groupTotal
-				data[firstRowIndex].avgScore = avgScore
-				data[firstRowIndex].rank = rank
-			}
-		})
-		tableData.value = data
-	}
-
-	const spanMethod = ({ row, column, rowIndex, columnIndex }) => {
+	// 合并单元格
+	const spanMethod = ({ row, column, rowIndex, columnIndex } : any) => {
 		if (columnIndex === 0) {
 			const groupRows = tableData.value.filter(r => r.groupId === row.groupId)
 			const firstIndex = tableData.value.findIndex(r => r.groupId === row.groupId)
 			if (firstIndex === rowIndex) return { rowspan: groupRows.length, colspan: 1 }
 			return { rowspan: 0, colspan: 0 }
 		}
-		if (columnIndex === 9 || columnIndex === 10 || columnIndex === 11) {
+		if (columnIndex >= 9 && columnIndex <= 11) {
 			const groupRows = tableData.value.filter(r => r.groupId === row.groupId)
 			const firstRow = groupRows[0]
 			const firstIndex = tableData.value.findIndex(r => r.groupId === row.groupId && r.day === firstRow.day)
@@ -712,96 +496,41 @@
 		return { rowspan: 1, colspan: 1 }
 	}
 
-	const getRankType = (rank) => {
+	const getRankType = (rank : number) => {
 		if (rank === 1) return 'danger'
 		if (rank === 2) return 'warning'
 		if (rank === 3) return 'success'
 		return 'info'
 	}
 
-	const refreshData = () => {
-		fetchDataFromAPI()
-	}
-
-	const handleGroupClick = (groupName) => {
-		ElMessageBox.prompt('请输入要操作的星期 (周一~周五)', '选择星期', {
-			confirmButtonText: '下一步',
-			cancelButtonText: '取消',
-			inputValue: '周一',
-			inputValidator: (val) => {
-				if (!['周一', '周二', '周三', '周四', '周五'].includes(val)) return '请输入正确的星期（周一~周五）'
-				return true
+	// ---------- 生命周期 ----------
+	onMounted(async () => {
+		uni.getStorage({
+			key: 'teacherInfo',
+			success(res) {
+				schoolInfo.value = res.data.school || ''
+			},
+			fail() {
+				schoolInfo.value = ''
 			}
-		}).then(({ value: targetDay }) => {
-			groupDialog.value = { visible: true, groupName, targetDay }
-		}).catch(() => { })
-	}
-
-	const confirmGroupChange = async (change) => {
-		const { groupName, targetDay } = groupDialog.value
-		const group = groupsStore.value.find(g => g.name === groupName)
-		if (!group) return
-		const dayData = group.days.find(d => d.day === targetDay)
-		if (!dayData) {
-			ElMessage.warning('该小组没有此天的数据')
-			groupDialog.value.visible = false
-			return
-		}
-		for (let i = 0; i < 7; i++) {
-			if (dayData.scores[i] !== null) {
-				const oldVal = dayData.scores[i] || 0
-				dayData.scores[i] = oldVal + change
+		})
+		try {
+			await initClassInfo()
+			// 设置默认学期（根据月份）
+			const month = new Date().getMonth() + 1
+			selectedSemester.value = month >= 3 && month <= 8 ? 2 : 1
+			await loadGradeOptions()
+			if (selectedGrade.value && selectedSemester.value) {
+				await loadWeeks()
 			}
+		} catch (error) {
+			console.error('初始化失败', error)
+			ElMessage.error('页面初始化失败，请刷新重试')
 		}
-		normalizeGroupData(group)
-		buildTableFromGroups()
-		await saveCurrentData()
-		ElMessage.success(`已为${groupName}的${targetDay}所有存在成员${change > 0 ? '+' : ''}${change}分`)
-		groupDialog.value.visible = false
-	}
-
-	const openStudentScoreEditor = (row, memberNumber) => {
-		if (row.isSummary) {
-			ElMessage.warning('合计行不能修改')
-			return
-		}
-		const group = groupsStore.value.find(g => g.name === row.groupName)
-		if (!group) return
-		const dayData = group.days.find(d => d.day === row.day)
-		if (!dayData) return
-		const currentScore = dayData.scores[memberNumber - 1]
-		if (currentScore === null) {
-			ElMessage.warning('该成员不存在，请点击 x 添加')
-			return
-		}
-		personalDialog.value = { visible: true, row, memberNumber, currentScore }
-	}
-
-	const confirmPersonalChange = async (delta) => {
-		const { row, memberNumber, currentScore } = personalDialog.value
-		const group = groupsStore.value.find(g => g.name === row.groupName)
-		if (!group) return
-		const dayData = group.days.find(d => d.day === row.day)
-		if (!dayData) return
-		const newScore = currentScore + delta
-		dayData.scores[memberNumber - 1] = newScore
-		normalizeGroupData(group)
-		buildTableFromGroups()
-		await saveCurrentData()
-		ElMessage.success(`已将${row.groupName} ${row.day} ${memberNumber}号组员分数调整为 ${newScore}`)
-		personalDialog.value.visible = false
-	}
-
-	onMounted(() => {
-		uni.getStorage({key:'teacherInfo',success(res) {
-			schoolInfo.value =res.data.school
-		}})
-		fetchDataFromAPI()
 	})
 </script>
 
 <style scoped>
-	/* 样式保持原有不变 */
 	.app-container {
 		max-width: 1400px;
 		margin: 0 auto;
@@ -816,15 +545,9 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		flex-wrap: wrap;
-		gap: 16px;
 		margin-bottom: 16px;
-	}
-
-	.title {
-		font-size: 1.4rem;
-		font-weight: 600;
-		color: #1e293b;
+		flex-wrap: wrap;
+		gap: 12px;
 	}
 
 	.actions {
@@ -833,7 +556,7 @@
 		flex-wrap: wrap;
 	}
 
-	.week-bar {
+	.filter-bar {
 		display: flex;
 		align-items: center;
 		gap: 12px;
@@ -854,8 +577,6 @@
 	.table-title {
 		text-align: center;
 		margin-bottom: 20px;
-		padding-bottom: 10px;
-		border-bottom: 2px solid #eef2f6;
 	}
 
 	.table-title h2 {
@@ -865,50 +586,23 @@
 		color: #1e293b;
 	}
 
-	.group-name-cell {
-		cursor: pointer;
-		color: #409eff;
-		font-weight: 500;
+	.empty-placeholder {
+		margin-top: 20px;
 	}
 
-	.group-name-cell:hover {
-		text-decoration: underline;
-	}
+	/* 响应式调整 */
+	@media (max-width: 768px) {
+		.app-container {
+			padding: 12px;
+		}
 
-	.clickable-score {
-		cursor: pointer;
-		display: inline-block;
-		padding: 4px 8px;
-		border-radius: 4px;
-		transition: background 0.2s;
-	}
+		.filter-bar {
+			justify-content: flex-start;
+		}
 
-	.clickable-score:hover {
-		background-color: #ecf5ff;
-	}
-
-	.null-score {
-		color: #aaa;
-		font-style: italic;
-		cursor: pointer;
-	}
-
-	.null-score:hover {
-		background-color: #f0f9eb;
-	}
-
-	.score-buttons {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		justify-content: center;
-	}
-
-	:deep(.el-table .cell) {
-		white-space: nowrap;
-	}
-
-	:deep(.el-table__header th) {
-		background-color: #f5f7fa;
+		.actions {
+			width: 100%;
+			justify-content: flex-end;
+		}
 	}
 </style>

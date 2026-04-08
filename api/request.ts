@@ -6,6 +6,7 @@ const BASE_URL = '/api'
 
 // 通用请求方法
 const request = <T = any>(options : UniApp.RequestOptions) : Promise<T> => {
+	console.log(options)
 	return new Promise((resolve, reject) => {
 		// 从本地存储获取 token
 		const token = uni.getStorageSync('token')
@@ -199,14 +200,6 @@ export const updateGroup = (data:object) => {
 // ==================== 积分管理相关 API（新增） ====================
 
 /**
- * 获取班级指定年级/学期下的所有周次列表
- * @param params { classId, grade, semester }
- */
-export const getClassWeeksByGradeSemester = (params: { classId: number; grade: string; semester: number }) => {
-  return request({ url: '/stu/class/weeks', method: 'GET', data: params })
-}
-
-/**
  * 获取小组积分汇总数据（用于 groupScore 页面）
  * @param params { classId, grade, semester, week }
  */
@@ -228,13 +221,28 @@ export const addStudentScore = (data: {
   score: number;
   reason?: string;
 }) => {
-  return request({ url: '/stu/student/score/add', method: 'POST', data })
+  return request({ url: '/stu/student/addStudentScore', method: 'POST', data })
 }
 
+// 批量添加学生积分
+export const batchAddStudentScore = (data: { records: any[] }) => {
+  return request({ url: '/stu/teacher/batchAddStudentScore', method: 'POST', data })
+}
+
+// 获取积分原因配置
+export const getScoreReasons = () => {
+  return request({
+    url: '/stu/teacher/getScoreReasons',
+    method: 'GET'
+  })
+}
+
+
 /**
- * 获取班级已有的年级列表（用于下拉筛选）
- * @param classId
+ * 获取班级所有学生的积分记录（用于构建缓存）
+ * @param params { classId: number }
+ * @returns Promise<{ code: number, msg: string, data: Array<{ studentId: number, week: number, dayOfWeek: number, score: number }> }>
  */
-export const getClassGrades = (classId: number) => {
-  return request({ url: '/stu/class/grades', method: 'GET', data: { classId } })
+export const getAllClassScores = (params: { classId: number }) => {
+  return request({ url: '/stu/teacher/getAllClassScores', method: 'POST', data: params })
 }

@@ -1,12 +1,15 @@
 <template>
 	<div class="student-manage-container">
-		<!-- 筛选栏：只保留小组筛选 -->
+
+
+		<!-- 原有筛选栏（小组筛选） -->
 		<el-card class="filter-card" shadow="never">
 			<el-form :inline="true" class="filter-form">
-				<el-form-item label="小组" prop="stu_group_info_id" style="width: 220px;">
+				<el-form-item label="小组筛选" prop="stu_group_info_id">
 					<el-select v-model="filterForm.stu_group_info_id" placeholder="请选择小组" clearable
-						@change="onGroupChange">
-						<el-option v-for="item in groupList" :key="item.id" :label="item.name" :value="item.id" />
+						@change="onGroupChange" style="width: 220px;">
+						<el-option v-for="item in groupList" :key="item.id" :label="item.name+item.description"
+							:value="item.id" />
 					</el-select>
 				</el-form-item>
 				<el-form-item>
@@ -19,8 +22,26 @@
 				</el-form-item>
 			</el-form>
 		</el-card>
-
-		<!-- 学生列表（保持不变） -->
+		<!-- 新增：年级/学期/周次筛选栏 -->
+		<el-card class="filter-card" shadow="never">
+			<div class="score-filter-bar">
+				<el-select v-model="selectedGrade" placeholder="选择年级" style="width: 140px"
+					@change="onGradeOrSemesterChange">
+					<el-option v-for="grade in gradeOptions" :key="grade" :label="grade+'年级'" :value="grade" />
+				</el-select>
+				<el-select v-model="selectedSemester" placeholder="选择学期" style="width: 120px"
+					@change="onGradeOrSemesterChange">
+					<el-option label="上学期" :value="1" />
+					<el-option label="下学期" :value="2" />
+				</el-select>
+				<el-select v-model="selectedWeek" placeholder="选择周次" style="width: 120px"
+					:disabled="!selectedGrade || !selectedSemester" @change="onWeekChange">
+					<el-option v-for="w in availableWeeks" :key="w" :label="`第${w}周`" :value="w" />
+				</el-select>
+				<el-button type="primary" plain @click="openScoreDialog" :disabled="!selectedWeek">积分操作</el-button>
+			</div>
+		</el-card>
+		<!-- 学生列表（保持不变，但确保 group_id 字段正确） -->
 		<el-card class="table-card" shadow="hover">
 			<el-table :data="studentList" border stripe v-loading="loading">
 				<el-table-column prop="student_no" label="学号" width="120" />
@@ -67,7 +88,8 @@
 				</el-form-item>
 				<el-form-item label="小组" prop="stu_group_id">
 					<el-select v-model="form.stu_group_info_id" placeholder="请选择小组" clearable>
-						<el-option v-for="item in groupList" :key="item.id" :label="item.name" :value="item.id" />
+						<el-option v-for="item in groupList" :key="item.id" :label="item.name+item.description"
+							:value="item.id" />
 					</el-select>
 				</el-form-item>
 				<el-form-item label="组内编号" prop="member_number">
@@ -105,6 +127,85 @@
 			<template #footer>
 				<el-button @click="groupNamingVisible = false">取消</el-button>
 				<el-button type="primary" :loading="groupNamingLoading" @click="submitGroupNaming">保存</el-button>
+			</template>
+		</el-dialog>
+
+		<!-- 积分操作弹窗（大尺寸） -->
+		<el-dialog v-model="scoreDialogVisible" title="积分操作" width="80%" top="5vh" :close-on-click-modal="false"
+			class="score-dialog">
+			<div class="score-dialog-header">
+				<el-form inline>
+					<el-form-item label="选择星期">
+						<el-select v-model="scoreDayOfWeek" placeholder="请选择星期" style="width: 120px">
+							<el-option label="周一" :value="1" />
+							<el-option label="周二" :value="2" />
+							<el-option label="周三" :value="3" />
+							<el-option label="周四" :value="4" />
+							<el-option label="周五" :value="5" />
+						</el-select>
+					</el-form-item>
+					<el-form-item>
+						<el-alert title="提示：小组整体加减分将影响该小组所有成员（仅对存在的成员生效）" type="info" :closable="false" show-icon />
+					</el-form-item>
+				</el-form>
+			</div>
+			<div class="groups-score-container" v-loading="scoreGroupLoading">
+				<el-collapse v-model="activeGroupCollapse">
+					<el-collapse-item v-for="group in groupMembersList" :key="group.id" :name="group.id">
+						<template #title>
+							<div class="group-title">
+								<span>{{ group.name }} ({{ group.members.length }}人)</span>
+								<div class="group-batch-buttons" @click.stop>
+									<el-button type="success" size="small"
+										@click="batchAdjustScore(group, 10)">+10</el-button>
+									<el-button type="danger" size="small"
+										@click="batchAdjustScore(group, -10)">-10</el-button>
+								</div>
+							</div>
+						</template>
+						<el-table :data="group.members" border size="small">
+							<el-table-column prop="member_number" label="编号" width="80" />
+							<el-table-column prop="name" label="姓名" width="100" />
+							<el-table-column label="当前周积分" width="100">
+								<template #default="{ row }">{{ getStudentWeekScore(row) }}</template>
+							</el-table-column>
+							<el-table-column label="操作" width="200">
+								<template #default="{ row }">
+									<el-button type="primary" size="small"
+										@click="openStudentScoreAdjust(row)">加减分</el-button>
+								</template>
+							</el-table-column>
+						</el-table>
+					</el-collapse-item>
+				</el-collapse>
+			</div>
+			<template #footer>
+				<el-button @click="scoreDialogVisible = false">关闭</el-button>
+			</template>
+		</el-dialog>
+
+		<!-- 个人加减分子弹窗 -->
+		<el-dialog v-model="personalScoreDialogVisible" title="个人加减分" width="500px">
+			<el-form :model="personalScoreForm" label-width="100px">
+				<el-form-item label="学生姓名">
+					<span>{{ personalScoreForm.studentName }}</span>
+				</el-form-item>
+				<el-form-item label="积分变动">
+					<div class="score-buttons">
+						<el-button v-for="val in scoreValues" :key="val"
+							:type="val === 0 ? 'info' : (val > 0 ? 'success' : 'danger')" size="small"
+							@click="personalScoreForm.score = val">
+							{{ val > 0 ? '+' : '' }}{{ val }}
+						</el-button>
+					</div>
+				</el-form-item>
+				<el-form-item label="原因">
+					<el-input v-model="personalScoreForm.reason" placeholder="请输入加减分原因" />
+				</el-form-item>
+			</el-form>
+			<template #footer>
+				<el-button @click="personalScoreDialogVisible = false">取消</el-button>
+				<el-button type="primary" :loading="personalScoreSubmitting" @click="submitPersonalScore">确定</el-button>
 			</template>
 		</el-dialog>
 
@@ -151,17 +252,39 @@
 	import { ref, reactive, onMounted, computed } from 'vue'
 	import { ElMessage, ElMessageBox } from 'element-plus'
 	import * as XLSX from 'xlsx'
-	import {
-		getGroupList,
-		getStudentList,
-		addStudent,
-		updateStudent,
-		getClasses,
-		deleteStudent as deleteStudentApi,
-		updateGroup,        // 新增：更新小组接口（需后端实现）
-	} from '@/api/request'
+	import { getGroupList, getStudentList, addStudent, updateStudent, getClasses, deleteStudent as deleteStudentApi, updateGroup, getGroupsScores, addStudentScore, batchAddStudentScore } from '@/api/request'
 
-	// ---------- 全局变量 ----------
+	// ========== 年级/学期/周次相关 ==========
+	const selectedGrade = ref('')
+	const selectedSemester = ref<number | null>(null)
+	const selectedWeek = ref(0)
+	const availableWeeks = ref<number[]>([])
+	const gradeOptions = ref<string[]>([])
+	const gradeLoading = ref(false)
+
+	// 新增：生成 1~22 周
+	const generateWeeks = () => {
+		return Array.from({ length: 22 }, (_, i) => i + 1)
+	}
+	// 积分操作弹窗相关
+	const scoreDialogVisible = ref(false)
+	const scoreDayOfWeek = ref(1)  // 默认周一
+	const groupMembersList = ref<any[]>([])   // { id, name, members: [] }
+	const activeGroupCollapse = ref<number[]>([])
+	const scoreGroupLoading = ref(false)
+
+	// 个人加减分子弹窗
+	const personalScoreDialogVisible = ref(false)
+	const personalScoreForm = reactive({
+		studentId: null,
+		studentName: '',
+		score: 0,
+		reason: ''
+	})
+	const personalScoreSubmitting = ref(false)
+	const scoreValues = [-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+	// 其他原有状态...
 	const currentClass = ref<any>(null)
 	const groupList = ref<any[]>([])
 	const allStudents = ref<any[]>([])
@@ -211,10 +334,17 @@
 	const fetchCurrentClass = async () => {
 		try {
 			const res = await getClasses()
-			if (res.code === 1) {
-				currentClass.value = res.data
-				const groupRes = await getGroupList({ class_id: currentClass.value[0].id })
-				if (groupRes.code === 1) groupList.value = groupRes.data
+			if (res.code === 1 && res.data.length) {
+				currentClass.value = res.data[0]
+				// 获取年级选项（从班级信息中提取，实际可从班级的 grade 字段取）
+				gradeOptions.value = [currentClass.value.grade]
+				selectedGrade.value = currentClass.value.grade
+				// 学期默认当前月份判断
+				const month = new Date().getMonth() + 1
+				selectedSemester.value = month >= 3 && month <= 8 ? 2 : 1
+				// 加载周次（前端生成）
+				loadWeeks()
+				await loadGroupList()
 				await fetchAllStudents()
 			} else {
 				ElMessage.error('获取班级信息失败')
@@ -224,14 +354,215 @@
 		}
 	}
 
+	// 根据学期和当前日期计算默认周次
+	const calculateDefaultWeek = (semester : number) : number => {
+		const now = new Date()
+		let startDate : Date
+		if (semester === 1) {
+			// 上学期：起始 3月1日
+			startDate = new Date(now.getFullYear(), 2, 1) // 月份 0-index，3月 => 2
+			// 如果当前日期早于 3月1日，则使用去年的 3月1日（实际上学期已结束，但为了显示，取去年）
+			if (now < startDate) {
+				startDate = new Date(now.getFullYear() - 1, 2, 1)
+			}
+		} else {
+			// 下学期：起始 9月1日
+			startDate = new Date(now.getFullYear(), 8, 1)
+			if (now < startDate) {
+				startDate = new Date(now.getFullYear() - 1, 8, 1)
+			}
+		}
+		const diffDays = Math.ceil((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+		let week = Math.ceil(diffDays / 7)
+		if (week < 1) week = 1
+		if (week > 22) week = 22
+		return week
+	}
+
+	// 重新加载周次（改为前端生成）
+	const loadWeeks = () => {
+		availableWeeks.value = generateWeeks()
+		if (selectedSemester.value !== null) {
+			selectedWeek.value = calculateDefaultWeek(selectedSemester.value)
+		} else {
+			selectedWeek.value = 1
+		}
+	}
+
+	// 年级或学期变化时的处理（不再请求后端，直接重新生成周次并计算默认周）
+	const onGradeOrSemesterChange = () => {
+		if (!selectedGrade.value || selectedSemester.value === null) return
+		loadWeeks()
+		// 可选：如果需要刷新学生列表的积分显示（因为周次变了），可以调用 fetchAllStudents 或其他刷新逻辑
+		fetchAllStudents()
+	}
+
+	// 周次切换（直接使用前端周次）
+	const onWeekChange = () => {
+		// 周次变化时，可刷新学生列表的当前周积分显示（可选）
+		fetchAllStudents()
+	}
+
+
+	const loadGroupList = async () => {
+		if (!currentClass.value) return
+		const res = await getGroupList({ class_id: currentClass.value.id })
+		if (res.code === 1) groupList.value = res.data
+	}
+
+	// 获取小组及成员列表（用于积分弹窗）
+	const loadGroupMembers = async () => {
+		if (!currentClass.value) return
+		scoreGroupLoading.value = true
+		try {
+			const groups = groupList.value
+			const membersMap : Record<number, any[]> = {}
+			// 获取所有学生并按小组分组
+
+			originalStudents.value.forEach((stu : any) => {
+				const gid = stu.stu_group_info_id
+				if (gid) {
+					if (!membersMap[gid]) membersMap[gid] = []
+					membersMap[gid].push(stu)
+				}
+			})
+
+			groupMembersList.value = groups.map((g : any) => ({
+				id: g.id,
+				name: g.name,
+				members: (membersMap[g.id] || []).sort((a, b) => (a.member_number || 0) - (b.member_number || 0))
+			})).filter(g => g.members.length > 0)
+			// 默认展开所有小组
+			activeGroupCollapse.value = groupMembersList.value.map(g => g.id)
+		} catch (error) {
+			ElMessage.error('加载小组成员失败')
+		} finally {
+			scoreGroupLoading.value = false
+		}
+	}
+
+	// 获取学生本周当前总积分（用于弹窗显示）
+	const getStudentWeekScore = (student : any) => {
+		// 可调用 getGroupsScores 获取，这里简化，实际可另行请求
+		return student.total_points || 0
+	}
+
+	// 打开积分操作弹窗
+	const openScoreDialog = async () => {
+		if (!selectedWeek.value) {
+			ElMessage.warning('请先选择年级、学期和周次')
+			return
+		}
+		await loadGroupMembers()
+		scoreDialogVisible.value = true
+	}
+
+	// 小组整体加减分
+	const batchAdjustScore = async (group : any, delta : number) => {
+		if (!scoreDayOfWeek.value) {
+			ElMessage.warning('请先选择星期')
+			return
+		}
+		const members = group.members
+		if (members.length === 0) {
+			ElMessage.warning('该小组暂无成员')
+			return
+		}
+		try {
+			await ElMessageBox.prompt('请输入加减分原因', '提示', {
+				confirmButtonText: '确定',
+				cancelButtonText: '取消',
+				inputValue: '小组整体' + (delta > 0 ? '加分' : '减分')
+			})
+			const reason = await new Promise<string>((resolve) => {
+				ElMessageBox.prompt('请输入加减分原因', '原因', {
+					inputPlaceholder: '例如：课堂表现优秀'
+				}).then(({ value }) => resolve(value)).catch(() => resolve(''))
+			})
+			if (!reason) return
+			// 构建批量数据
+			const records = members.map((stu : any) => ({
+				studentId: stu.id,
+				classId: currentClass.value.id,
+				grade: selectedGrade.value,
+				semester: selectedSemester.value,
+				week: selectedWeek.value,
+				dayOfWeek: scoreDayOfWeek.value,
+				score: delta,
+				reason: reason
+			}))
+			// 调用批量接口
+			const res = await batchAddStudentScore({ records })
+			if (res.code === 1) {
+				ElMessage.success(`已为小组 ${group.name} 所有成员 ${delta > 0 ? '+' : ''}${delta} 分`)
+				// 刷新学生列表的积分显示（重新获取）
+				await fetchAllStudents()
+			} else {
+				ElMessage.error(res.msg || '操作失败')
+			}
+		} catch (error) {
+			console.error(error)
+		}
+	}
+
+	// 打开个人加减分子弹窗
+	const openStudentScoreAdjust = (student : any) => {
+		personalScoreForm.studentId = student.id
+		personalScoreForm.studentName = student.name
+		personalScoreForm.score = 0
+		personalScoreForm.reason = ''
+		personalScoreDialogVisible.value = true
+	}
+
+	// 提交个人加减分
+	const submitPersonalScore = async () => {
+		if (personalScoreForm.score === 0) {
+			ElMessage.warning('请选择积分变动值')
+			return
+		}
+		if (!personalScoreForm.reason) {
+			ElMessage.warning('请填写原因')
+			return
+		}
+		personalScoreSubmitting.value = true
+		try {
+			const res = await addStudentScore({
+				studentId: personalScoreForm.studentId,
+				classId: currentClass.value.id,
+				grade: selectedGrade.value,
+				semester: selectedSemester.value,
+				week: selectedWeek.value,
+				dayOfWeek: scoreDayOfWeek.value,
+				score: personalScoreForm.score,
+				reason: personalScoreForm.reason
+			})
+			if (res.code === 1) {
+				ElMessage.success(`已为 ${personalScoreForm.studentName} ${personalScoreForm.score > 0 ? '+' : ''}${personalScoreForm.score} 分`)
+				personalScoreDialogVisible.value = false
+				await fetchAllStudents() // 刷新列表
+			} else {
+				ElMessage.error(res.msg || '操作失败')
+			}
+		} catch (error) {
+			ElMessage.error('网络错误')
+		} finally {
+			personalScoreSubmitting.value = false
+		}
+	}
+
+	// 修复小组筛选：确保学生数据中包含 stu_group_id
 	const fetchAllStudents = async () => {
 		if (!currentClass.value) return
 		loading.value = true
 		try {
-			const params = { class_id: currentClass.value[0].id, limit: 9999 }
+			const params = { class_id: currentClass.value.id, limit: 9999 }
 			const res = await getStudentList(params)
 			if (res.code === 1) {
-				originalStudents.value = res.data.list
+				// 确保每条学生记录都有 stu_group_id 字段（后端返回）
+				originalStudents.value = res.data.list.map((s : any) => ({
+					...s,
+					stu_group_info_id: s.stu_group_info_id ?? s.stu_group_info_id ?? null
+				}))
 				applyFilter()
 			} else {
 				ElMessage.error(res.msg || '获取学生列表失败')
@@ -246,10 +577,7 @@
 	const applyFilter = () => {
 		let filtered = [...originalStudents.value]
 		if (filterForm.stu_group_info_id) {
-			filtered = filtered.filter(s => {
-				const groupId = s.stu_group_id ?? s.group_id ?? s.stu_group_info_id
-				return groupId === filterForm.stu_group_info_id
-			})
+			filtered = filtered.filter(s => s.stu_group_info_id === filterForm.stu_group_info_id)
 		}
 		filteredStudents.value = filtered
 		pagination.total = filtered.length
@@ -267,6 +595,9 @@
 		const end = start + pagination.limit
 		studentList.value = filteredStudents.value.slice(start, end)
 	}
+
+	// 其他原有方法（新增、编辑、删除、导入导出、排座位等）保持不变...
+	// 注意：需要将原有的 reloadStudents 改为 fetchAllStudents 等，此处省略重复代码
 
 	const reloadStudents = async () => {
 		await fetchAllStudents()
@@ -302,13 +633,14 @@
 		submitLoading.value = true
 		try {
 			let res
-			const payload = { ...form, stu_class_id: currentClass.value[0].id }
+			const payload = { ...form, stu_class_id: currentClass.value.id, stu_school_id: currentClass.value.stu_school_id }
+			console.log(payload)
 			if (form.id) {
 				res = await updateStudent(payload)
 			} else {
 				res = await addStudent(payload)
 			}
-			
+
 			if (res.code === 1) {
 				ElMessage.success('操作成功')
 				dialogVisible.value = false
@@ -342,10 +674,11 @@
 	// ---------- 小组命名功能 ----------
 	const openGroupNamingDialog = () => {
 		// 复制当前小组列表用于编辑，保留原有 description
+		console.log(groupList.value)
 		groupEditList.value = groupList.value.map(g => ({
 			id: g.id,
 			name: g.name,
-			code:g.code,
+			code: g.code,
 			sort_order: g.sort_order,
 			description: g.description || '',
 		}))
@@ -369,7 +702,7 @@
 			if (succeeded > 0) {
 				ElMessage.success(`成功更新 ${succeeded} 个小组的花名${failed > 0 ? `，失败 ${failed} 个` : ''}`)
 				// 刷新小组列表
-				const groupRes = await getGroupList({ class_id: currentClass.value[0].id })
+				const groupRes = await getGroupList({ class_id: currentClass.value.id })
 				if (groupRes.code === 1) groupList.value = groupRes.data
 				await reloadStudents()  // 刷新学生列表中的小组花名显示
 				groupNamingVisible.value = false
@@ -457,12 +790,12 @@
 				if (!name || !studentNo || isNaN(groupNo)) continue
 
 				studentsToAdd.push({
-					stu_school_id: currentClass.value[0].stu_school_id,
+					stu_school_id: currentClass.value.stu_school_id,
 					student_no: studentNo,
 					name: name,
 					gender: gender,
 					groupName: groupName,
-					stu_class_id: currentClass.value[0].id,
+					stu_class_id: currentClass.value.id,
 					height: height,
 					vision: vision,
 					groupNo: groupNo,
@@ -523,12 +856,18 @@
 
 	// ---------- 排座位功能（新增导出座位表）----------
 	const openSeatDialog = async () => {
-		const allStudentsRes = await getStudentList({ class_id: currentClass.value[0].id, limit: 9999 })
-		if (allStudentsRes.code !== 1) {
-			ElMessage.error('获取学生列表失败')
-			return
+		const allStudentsData = originalStudents.value
+		if (allStudentsData.length == 0) {
+			console.log(allStudentsData)
+			const allStudentsRes = await getStudentList({ class_id: currentClass.value.id, limit: 9999 })
+			if (allStudentsRes.code !== 1) {
+				ElMessage.error('获取学生列表失败')
+				return
+			}
+			allStudentsData.value = allStudentsRes.data
 		}
-		const allStudentsData = allStudentsRes.data.list
+
+
 		seatMatrix.value = Array(8).fill(null).map(() => Array(8).fill(null).map(() => ({ student: null })))
 		unassignedStudents.value = [...allStudentsData]
 		seatDialogVisible.value = true
@@ -650,6 +989,44 @@
 </script>
 
 <style scoped>
+	/* 原有样式保持不变，新增样式 */
+	.score-filter-bar {
+		display: flex;
+		gap: 12px;
+		align-items: center;
+		flex-wrap: wrap;
+		margin-bottom: 16px;
+	}
+
+	.score-dialog :deep(.el-dialog__body) {
+		padding: 20px;
+		max-height: 70vh;
+		overflow-y: auto;
+	}
+
+	.groups-score-container {
+		margin-top: 20px;
+	}
+
+	.group-title {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+		padding-right: 20px;
+	}
+
+	.group-batch-buttons {
+		display: flex;
+		gap: 8px;
+	}
+
+	.score-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
 	/* 原有样式保持不变 */
 	.student-manage-container {
 		padding: 20px;
