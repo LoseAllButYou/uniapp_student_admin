@@ -73,6 +73,17 @@
         "router" : {
             "mode" : "hash",
             "base" : "/web/"
+        },
+        "devServer" : {
+            "proxy" : {
+                "/api" : {
+                    "target" : "http://106.12.106.67",
+                    "changeOrigin" : true,
+                    "pathRewrite" : {
+                        "^/api" : "/api"
+                    }
+                }
+            }
         }
     }
 }

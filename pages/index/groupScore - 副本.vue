@@ -2,20 +2,15 @@
 	<div class="app-container">
 		<el-card class="header-card" shadow="never">
 			<div class="header-content">
-				<div class="title">
-					<i class="fas fa-chalkboard-user"></i> 班级积分管理系统 · 积分汇总表
-				</div>
 				<div class="actions">
-					<el-button type="primary" plain @click="exportToExcel" icon="Download">导出Excel</el-button>
-					<el-button type="success" plain @click="importExcel" icon="Upload">导入Excel</el-button>
+					<el-button type="primary" plain @click="exportToExcel" icon="Upload">导出Excel</el-button>
+					<el-button type="success" plain @click="importExcel" icon="Download">导入Excel</el-button>
 					<el-button type="info" plain @click="refreshData" icon="RefreshRight">刷新数据</el-button>
-					<el-button type="warning" plain @click="showTeacherInfo" icon="User">个人信息</el-button>
-					<el-button type="danger" plain @click="logout" icon="SwitchButton">退出登录</el-button>
 				</div>
 			</div>
 			<div class="week-bar">
-				<!-- 新增周次下拉选择器 -->
-				<el-select v-model="selectedWeek" placeholder="选择周次" style="width: 120px; margin-right: 12px;" @change="onWeekSelect" :disabled="selectedWeek==0">
+				<el-select v-model="selectedWeek" placeholder="选择周次" style="width: 120px; margin-right: 12px;"
+					@change="onWeekSelect" :disabled="selectedWeek==0">
 					<el-option v-for="w in availableWeeks" :key="w" :label="`第${w}周`" :value="w" />
 				</el-select>
 				<el-button type="primary" @click="addNewWeek" icon="Plus">添加新一周</el-button>
@@ -26,11 +21,10 @@
 		</el-card>
 		<el-card class="table-card" shadow="hover" v-loading="loading">
 			<div class="table-title">
-				<h2>{{ schoolInfo }}小组管理第{{ currentWeek }}周积分汇总表</h2>
+				<h2>{{ schoolInfo+classInfo.name }}小组管理第{{ currentWeek }}周积分汇总表</h2>
 			</div>
 			<el-table :data="tableData" border stripe style="width: 100%" :span-method="spanMethod"
 				:header-cell-style="{ background: '#f5f7fa', color: '#1e293b', fontWeight: 'bold' }">
-				<!-- 表格列定义保持不变 -->
 				<el-table-column prop="groupName" label="组别" width="100" fixed="left">
 					<template #default="{ row, $index }">
 						<div class="group-name-cell" @click.stop="handleGroupClick(row.groupName, $index)">
@@ -133,40 +127,6 @@
 			</div>
 		</el-dialog>
 
-		<!-- 个人信息弹窗（增加添加班级按钮） -->
-		<el-dialog v-model="teacherInfoDialog.visible" title="教师信息" width="400px">
-			<el-descriptions :column="1" border>
-				<el-descriptions-item label="姓名">{{ teacherInfoDialog.name }}</el-descriptions-item>
-				<el-descriptions-item label="学校">{{ teacherInfoDialog.school }}</el-descriptions-item>
-				<el-descriptions-item label="班级">{{ teacherInfoDialog.className }}</el-descriptions-item>
-			</el-descriptions>
-			<div style="margin-top: 16px; text-align: center;">
-				<el-button type="primary" @click="openCreateClassDialog">添加班级</el-button>
-			</div>
-		</el-dialog>
-
-		<!-- 新建班级独立弹窗 -->
-		<el-dialog v-model="createClassDialog.visible" title="新建班级" width="400px">
-			<el-form :model="createClassForm" :rules="createClassRules" ref="createClassFormRef" label-width="80px">
-				<el-form-item label="班级名称" prop="name">
-					<el-input v-model="createClassForm.name" placeholder="请输入班级名称" />
-				</el-form-item>
-				<el-form-item label="班级编码" prop="code">
-					<el-input v-model="createClassForm.code" placeholder="请输入班级编码（可选）" />
-				</el-form-item>
-				<el-form-item label="年级" prop="grade">
-					<el-input v-model="createClassForm.grade" placeholder="请输入年级（可选）" />
-				</el-form-item>
-				<el-form-item label="学期" prop="semester">
-					<el-input v-model="createClassForm.semester" placeholder="请输入学期（可选）" />
-				</el-form-item>
-			</el-form>
-			<template #footer>
-				<el-button @click="createClassDialog.visible = false">取消</el-button>
-				<el-button type="primary" :loading="createClassLoading" @click="submitCreateClass">确定</el-button>
-			</template>
-		</el-dialog>
-
 		<!-- 隐藏文件上传 -->
 		<input type="file" ref="fileInput" style="display:none" accept=".xlsx,.xls" @change="handleFileUpload" />
 	</div>
@@ -176,43 +136,28 @@
 	import { ref, onMounted } from 'vue'
 	import { ElMessage, ElMessageBox } from 'element-plus'
 	import * as XLSX from 'xlsx'
-	import { getGroups, updateGroupScore, getClasses, getTeacherInfo, tokenLogin, addNewWeek as AddNewWeek, getClassWeeks, createClass } from '@/api/request'
+	import { getGroups, updateGroupScore, getClasses, getTeacherInfo, addNewWeek as AddNewWeek, getClassWeeks, createClass } from '@/api/request'
 
 	// 学校信息（显示用）
 	const schoolInfo = ref('')
 	const currentWeek = ref(4)
 	const loading = ref(false)
 	const loadError = ref(false)
-	const infoMsg = "点击组别可批量加减分，点击分数可单独修改，点击 x 可添加新成员"
+	const infoMsg = "点击组别可批量加减分，点击分数可单独修改，点击 x 可添加新成员,新老师可以在个人信息栏创建班级后添加新周次，导入表格可以替换当前周数据"
 	const errorMsg = ref('')
 	const fileInput = ref(null)
 	const tableData = ref([])
 	const classInfo = ref(null)
 	const groupsStore = ref([])
 
-	// 新增：周次下拉相关变量
+	// 周次下拉相关变量
 	const selectedWeek = ref(0)
 	const availableWeeks = ref<number[]>([])
-
-	// 新增：创建班级相关变量
-	const createClassDialog = ref({ visible: false })
-	const createClassForm = ref({
-		name: '',
-		code: '',
-		grade: '',
-		semester: ''
-	})
-	const createClassRules = {
-		name: [{ required: true, message: '请输入班级名称', trigger: 'blur' }]
-	}
-	const createClassFormRef = ref(null)
-	const createClassLoading = ref(false)
 
 	const scoreValues = [-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 	const personalDialog = ref({ visible: false, row: null, memberNumber: null, currentScore: null })
 	const groupDialog = ref({ visible: false, groupName: null, targetDay: null })
-	const teacherInfoDialog = ref({ visible: false, name: '', school: '', className: '' })
 
 	// 星期顺序常量
 	const weekdaysOrder = ['周一', '周二', '周三', '周四', '周五']
@@ -277,39 +222,12 @@
 		}).catch(() => { })
 	}
 
-	// 检查登录状态
-	const checkLogin = async () => {
-		const token = uni.getStorageSync('token')
-		if (!token) {
-			uni.reLaunch({ url: '/pages/index/login' })
-			return false
-		}
-		try {
-			const res = await tokenLogin()
-			if (res.code === 1) {
-				const userInfo = res.data
-				uni.setStorageSync('userInfo', userInfo)
-				await fetchDataFromAPI()
-				return true
-			} else {
-				uni.removeStorageSync('token')
-				uni.removeStorageSync('userInfo')
-				uni.reLaunch({ url: '/pages/index/login' })
-				return false
-			}
-		} catch (e) {
-			uni.removeStorageSync('token')
-			uni.removeStorageSync('userInfo')
-			uni.reLaunch({ url: '/pages/index/login' })
-			return false
-		}
-	}
 
-	// 按周次加载数据（核心数据加载逻辑）
-	const loadDataByWeek = async (classId: number, week: number) => {
+	// 按周次加载数据
+	const loadDataByWeek = async (classId : number, week : number) => {
 		const groupsRes = await getGroups(classId, week)
 		if (groupsRes.code !== 1) throw new Error(groupsRes.msg || '获取小组数据失败')
-		const toNumberOrNull = (val: any): number | null => {
+		const toNumberOrNull = (val : any) : number | null => {
 			if (val === null || val === undefined || val === '') return null
 			if (typeof val === 'number') return isNaN(val) ? null : val
 			if (typeof val === 'string') {
@@ -320,7 +238,7 @@
 			}
 			return null
 		}
-		const processGroupData = (group: any) => {
+		const processGroupData = (group : any) => {
 			let jsonData = null
 			try {
 				jsonData = group.weekly_score_json ? JSON.parse(group.weekly_score_json) : null
@@ -331,8 +249,8 @@
 					summary: { totals: [null, null, null, null, null, null, null] }
 				}
 			}
-			const processedDays = (jsonData.days || []).map((dayItem: any) => {
-				const scores = (dayItem.scores || []).slice(0, 7).map((s: any) => toNumberOrNull(s))
+			const processedDays = (jsonData.days || []).map((dayItem : any) => {
+				const scores = (dayItem.scores || []).slice(0, 7).map((s : any) => toNumberOrNull(s))
 				while (scores.length < 7) scores.push(null)
 				return { day: dayItem.day, scores }
 			})
@@ -340,7 +258,7 @@
 				const existing = processedDays.find(d => d.day === weekday)
 				return existing || { day: weekday, scores: [null, null, null, null, null, null, null] }
 			})
-			const rawTotals = (jsonData.summary?.totals || []).slice(0, 7).map((t: any) => toNumberOrNull(t))
+			const rawTotals = (jsonData.summary?.totals || []).slice(0, 7).map((t : any) => toNumberOrNull(t))
 			while (rawTotals.length < 7) rawTotals.push(null)
 			return {
 				id: group.id,
@@ -354,39 +272,37 @@
 		buildTableFromGroups()
 	}
 
-	// 从后端加载数据（首次加载或刷新班级列表后）
+	// 从后端加载数据
 	const fetchDataFromAPI = async () => {
 		loading.value = true
 		loadError.value = false
 		try {
-			const teacherRes = await getTeacherInfo()
-			if (teacherRes.code !== 1) throw new Error('获取教师信息失败')
-			const teacherData = teacherRes.data
-			const classRes = await getClasses()
-			if (classRes.code !== 1 || !classRes.data.length) throw new Error('暂无班级数据')
-			const currentClass = classRes.data[0]
-			classInfo.value = currentClass
-			const schoolName = teacherData.school?.name || ''
-			const className = currentClass.name || ''
-			schoolInfo.value = schoolName + (className ? ` ${className}` : '')
-			teacherInfoDialog.value.name = teacherData.name || teacherData.username
-			teacherInfoDialog.value.school = schoolName
-			teacherInfoDialog.value.className = className
+			// 从本地存储获取班级信息（由 index.vue 存入）
+			const storedClass = uni.getStorageSync('currentClass')
+			if (!storedClass) {
+				// 如果本地没有，尝试调用接口获取
+				const classRes = await getClasses()
+				if (classRes.code !== 1 || !classRes.data.length) throw new Error('暂无班级数据')
+				const currentClass = classRes.data[0]
+				classInfo.value = currentClass
+				uni.setStorageSync('currentClass', currentClass)
+			} else {
+				classInfo.value = storedClass
+			}
 
 			// 获取班级已有周次列表
-			const weeksRes = await getClassWeeks(currentClass.id)
+			const weeksRes = await getClassWeeks(classInfo.value.id)
 			if (weeksRes.code === 1) {
 				availableWeeks.value = weeksRes.data
 				if (availableWeeks.value.length) {
 					const latestWeek = availableWeeks.value[availableWeeks.value.length - 1]
 					selectedWeek.value = latestWeek
 					currentWeek.value = latestWeek
-					await loadDataByWeek(currentClass.id, latestWeek)
+					await loadDataByWeek(classInfo.value.id, latestWeek)
 				} else {
-					// 无任何周次，初始化第1周
 					selectedWeek.value = 0
 					currentWeek.value = 0
-					await loadDataByWeek(currentClass.id, 1)
+					await loadDataByWeek(classInfo.value.id, 1)
 				}
 			} else {
 				throw new Error('获取周次列表失败')
@@ -446,9 +362,25 @@
 				type: 'warning'
 			})
 			if (!classInfo.value?.id) throw new Error('班级信息缺失')
+
+			if (currentWeek.value === 0 || groupsStore.value.length === 0) {
+				const emptyGroups = []
+				for (let i = 1; i <= 9; i++) {
+					emptyGroups.push({
+						id: null,
+						name: `第${i}组`,
+						days: weekdaysOrder.map(day => ({ day, scores: [null, null, null, null, null, null, null] })),
+						summary: { totals: [null, null, null, null, null, null, null] }
+					})
+				}
+				groupsStore.value = emptyGroups
+			}
+
 			const newWeek = currentWeek.value + 1
-			// 遍历所有小组，将每天每个成员分数（非null）重置为0
 			for (const group of groupsStore.value) {
+				if (!group.days || group.days.length === 0) {
+					group.days = weekdaysOrder.map(day => ({ day, scores: [null, null, null, null, null, null, null] }))
+				}
 				group.days.forEach(day => {
 					for (let i = 0; i < 7; i++) {
 						if (day.scores[i] !== null) {
@@ -460,15 +392,11 @@
 					days: group.days,
 					summary: { totals: [0, 0, 0, 0, 0, 0, 0] }
 				}
-				console.log(payload)
 				const res = await AddNewWeek(classInfo.value.id, newWeek, group.name, payload)
 				if (res.code !== 1) throw new Error(res.msg || '创建新一周失败')
-				// 重新标准化并计算合计
 				normalizeGroupData(group)
 			}
 			buildTableFromGroups()
-			ElMessage.success('已添加新一周，数据已重置')
-			// 刷新周次列表
 			const weeksRes = await getClassWeeks(classInfo.value.id)
 			if (weeksRes.code === 1) {
 				availableWeeks.value = weeksRes.data
@@ -485,52 +413,18 @@
 		}
 	}
 
-	// 打开创建班级弹窗
-	const openCreateClassDialog = () => {
-		createClassForm.value = { name: '', code: '', grade: '', semester: '' }
-		createClassDialog.value.visible = true
-	}
-
-	// 提交创建班级
-	const submitCreateClass = async () => {
-		if (!createClassFormRef.value) return
-		await createClassFormRef.value.validate(async (valid) => {
-			if (!valid) return
-			createClassLoading.value = true
-			try {
-				const res = await createClass(createClassForm.value)
-				if (res.code === 1) {
-					ElMessage.success('班级创建成功')
-					createClassDialog.value.visible = false
-					// 刷新班级列表及数据
-					await fetchDataFromAPI()
-				} else {
-					ElMessage.error(res.msg || '创建失败')
-				}
-			} catch (error) {
-				ElMessage.error('网络错误')
-			} finally {
-				createClassLoading.value = false
-			}
-		})
-	}
-
-
-	// 从导入的Excel构建内部数据结构，并复用 existingGroups 中的 id，正确处理 x
+	// 从导入的Excel构建内部数据结构
 	const parseExcelToGroups = (workbook, existingGroups = []) => {
 		const sheet = workbook.Sheets[workbook.SheetNames[0]]
 		const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })
 		if (!rows || rows.length < 3) throw new Error('文件格式不正确')
-
 		const groups = []
 		let currentGroup = null
 		for (let i = 2; i < rows.length; i++) {
 			const row = rows[i]
 			if (!row || row.length < 2) continue
-
 			let groupName = row[0] ? row[0].toString().trim() : ""
 			let dayText = row[1] ? row[1].toString().trim() : ""
-
 			if (groupName && !groupName.includes('合计') && weekdaysOrder.includes(dayText)) {
 				if (currentGroup) groups.push(currentGroup)
 				currentGroup = {
@@ -539,7 +433,6 @@
 					summary: { totals: [null, null, null, null, null, null, null] }
 				}
 			}
-
 			if (currentGroup) {
 				if (dayText === '合计') {
 					for (let no = 1; no <= 7; no++) {
@@ -554,7 +447,6 @@
 					const scores = []
 					for (let no = 1; no <= 7; no++) {
 						let val = row[2 + (no - 1)]
-						// 将 x 或空字符串转为 null
 						if (val === undefined || val === '' || val === 'x') {
 							scores.push(null)
 						} else {
@@ -567,8 +459,6 @@
 			}
 		}
 		if (currentGroup) groups.push(currentGroup)
-
-		// 补齐缺失小组（第1组到第9组）
 		const allGroupNames = ['第1组', '第2组', '第3组', '第4组', '第5组', '第6组', '第7组', '第8组', '第9组']
 		const existingNames = groups.map(g => g.name)
 		for (const name of allGroupNames) {
@@ -581,8 +471,6 @@
 			}
 		}
 		groups.sort((a, b) => (parseInt(a.name.replace(/\D/g, '')) || 0) - (parseInt(b.name.replace(/\D/g, '')) || 0))
-
-		// 复用 existingGroups 中的 id
 		const groupsWithId = groups.map(newGroup => {
 			const existing = existingGroups.find(old => old.name === newGroup.name)
 			return {
@@ -592,12 +480,9 @@
 				summary: newGroup.summary
 			}
 		})
-
-		// 标准化每个小组并重新计算合计
 		const finalGroups = groupsWithId.map(group => normalizeGroupData(group))
 		return finalGroups
 	}
-
 
 	// 导入Excel
 	const importExcel = () => {
@@ -650,17 +535,12 @@
 		reader.readAsArrayBuffer(file)
 	}
 
-
-	// 导出Excel（优先使用 xlsx-js-style 带样式，失败则回退到原生 xlsx）
+	// 导出Excel
 	const exportToExcel = () => {
-		// 1. 构建数据数组
 		const exportData : any[][] = []
-		// 标题行
-		exportData.push([`${schoolInfo.value}小组管理第${currentWeek.value}周积分汇总表`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
-		// 表头
+		exportData.push([`${schoolInfo.value}${classInfo.value.name}小组管理第${currentWeek.value}周积分汇总表`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
 		exportData.push(['组别', '时间', '1号组员', '2号组员', '3号组员', '4号组员', '5号组员', '6号组员', '7号组员', '小组总分', '平均分', '排名', '', '', '', '', ''])
 
-		// 计算小组分数和排名
 		const groupScores = groupsStore.value.map(group => {
 			const { groupTotal, avgScore } = calculateGroupScores(group)
 			return { groupName: group.name, groupTotal, avgScore }
@@ -689,7 +569,6 @@
 				}
 				exportData.push(row)
 			})
-			// 合计行
 			const summaryRow = ['', '合计']
 			for (let i = 0; i < 7; i++) {
 				const val = group.summary.totals[i]
@@ -697,23 +576,18 @@
 			}
 			summaryRow.push('', '', '')
 			exportData.push(summaryRow)
-			exportData.push([]) // 空行分隔
+			exportData.push([])
 		})
 
-		// 如果没有小组数据，添加空数据提示
 		if (groupsStore.value.length === 0) {
 			exportData.push(['暂无小组数据', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
 		}
 
-		// 2. 尝试加载 xlsx-js-style，失败则使用原生 xlsx
 		let XLSXLib = XLSX
 		let useStyle = false
-
-		// 创建工作簿和工作表
 		const wb = XLSXLib.utils.book_new()
 		const ws = XLSXLib.utils.aoa_to_sheet(exportData)
 
-		// 3. 合并单元格（组别列、总分/平均分/排名列已在表格构建时处理，这里额外合并组别列）
 		const merges : any[] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }]
 		let currentRow = 2
 		groupsStore.value.forEach(group => {
@@ -723,46 +597,27 @@
 		})
 		ws['!merges'] = merges
 
-		// 4. 设置列宽
 		ws['!cols'] = [
-			{ wch: 10 }, // 组别
-			{ wch: 8 },  // 时间
-			{ wch: 8 },  // 1号组员
-			{ wch: 8 },  // 2号组员
-			{ wch: 8 },  // 3号组员
-			{ wch: 8 },  // 4号组员
-			{ wch: 8 },  // 5号组员
-			{ wch: 8 },  // 6号组员
-			{ wch: 8 },  // 7号组员
-			{ wch: 10 }, // 小组总分
-			{ wch: 8 },  // 平均分
-			{ wch: 6 }   // 排名
+			{ wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
+			{ wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 10 },
+			{ wch: 8 }, { wch: 6 }
 		]
 
-		// 5. 添加样式（仅当使用 xlsx-js-style 时）
 		if (useStyle) {
 			const range = XLSXLib.utils.decode_range(ws['!ref'] || 'A1')
 			for (let R = range.s.r; R <= range.e.r; ++R) {
 				for (let C = range.s.c; C <= range.e.c; ++C) {
 					const cellAddress = XLSXLib.utils.encode_cell({ r: R, c: C })
 					if (!ws[cellAddress]) continue
-					// 确保单元格有类型（默认为字符串）
 					if (!ws[cellAddress].t) ws[cellAddress].t = 's'
-					// 样式对象
-					const style : any = {
-						alignment: { horizontal: 'center', vertical: 'center' }
-					}
-					if (R === 0) {
-						style.font = { sz: 18, bold: true }
-					} else if (R === 1) {
-						style.font = { bold: true }
-					}
+					const style : any = { alignment: { horizontal: 'center', vertical: 'center' } }
+					if (R === 0) style.font = { sz: 18, bold: true }
+					else if (R === 1) style.font = { bold: true }
 					ws[cellAddress].s = style
 				}
 			}
 		}
 
-		// 6. 添加工作表并导出
 		XLSXLib.utils.book_append_sheet(wb, ws, `第${currentWeek.value}周积分表`)
 		try {
 			XLSXLib.writeFile(wb, `班级第${currentWeek.value}周积分汇总表.xlsx`)
@@ -772,6 +627,7 @@
 			ElMessage.error('导出失败，请重试')
 		}
 	}
+
 	const buildTableFromGroups = () => {
 		groupsStore.value = groupsStore.value.map(group => normalizeGroupData(group))
 		const groupScores = groupsStore.value.map(group => {
@@ -839,7 +695,6 @@
 		tableData.value = data
 	}
 
-	// 合并单元格逻辑
 	const spanMethod = ({ row, column, rowIndex, columnIndex }) => {
 		if (columnIndex === 0) {
 			const groupRows = tableData.value.filter(r => r.groupId === row.groupId)
@@ -937,26 +792,11 @@
 		personalDialog.value.visible = false
 	}
 
-	// 退出登录
-	const logout = () => {
-		ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-			confirmButtonText: '确定',
-			cancelButtonText: '取消',
-			type: 'warning'
-		}).then(() => {
-			uni.removeStorageSync('token')
-			uni.removeStorageSync('userInfo')
-			uni.reLaunch({ url: '/pages/index/login' })
-		}).catch(() => { })
-	}
-
-	// 显示个人信息
-	const showTeacherInfo = () => {
-		teacherInfoDialog.value.visible = true
-	}
-
 	onMounted(() => {
-		checkLogin()
+		uni.getStorage({key:'teacherInfo',success(res) {
+			schoolInfo.value =res.data.school
+		}})
+		fetchDataFromAPI()
 	})
 </script>
 

@@ -7,6 +7,39 @@
 			}
 		},
 		{
+			"path": "pages/index/student",
+			"style": {
+				"navigationBarTitleText": "学生管理",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/index/groupScore",
+			"style": {
+				"navigationBarTitleText": "小组积分管理",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/index/reward",
+			"style": {
+				"navigationBarTitleText": "积分商城",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/index/rank",
+			"style": {
+				"navigationBarTitleText": "荣誉榜",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black"
+			}
+		},
+
+		{
 			"path": "pages/index/login",
 			"style": {
 				"navigationBarTitleText": "登录"
@@ -23,7 +56,8 @@
 		"navigationBarTextStyle": "black",
 		"navigationBarTitleText": "uni-app",
 		"navigationBarBackgroundColor": "#F8F8F8",
-		"backgroundColor": "#F8F8F8"
+		"backgroundColor": "#F8F8F8",
+		"navigationStyle": "custom"
 	},
 	"uniIdRouter": {}
 }
