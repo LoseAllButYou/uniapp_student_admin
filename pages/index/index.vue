@@ -237,7 +237,7 @@
 				const storedInfo = uni.getStorageSync('teacherInfo') || {}
 				storedInfo.classes = classList
 				uni.setStorageSync('teacherInfo', storedInfo)
-
+				
 				// 自动设置当前班级：优先选择 isDefault 为 true 的，否则选择 id 最大的（最新创建的）
 				let defaultClass = classList.find(c => c.isDefault === true)
 				if (!defaultClass && classList.length > 0) {
@@ -247,7 +247,7 @@
 					currentClassId.value = defaultClass.id
 					uni.setStorageSync('currentClassId', currentClassId.value)
 					// 触发全局事件，通知其他组件班级已更新
-					uni.$emit('class-list-updated', { classId: currentClassId.value, classList })
+					uni.$emit('storage', { classId: currentClassId.value, classList })
 				} else {
 					currentClassId.value = null
 					uni.removeStorageSync('currentClassId')
@@ -277,28 +277,25 @@
 			if (tokenRes.code !== 1) throw new Error('token验证失败')
 			const userData = tokenRes.data
 			logined.value = true;
-			loading.value = false;
 			let isStorage = true
-			uni.getStorage({
-				key: 'teacherInfo',
-				success(e) {
-					teacherInfo.value = e.data
-					const classId = teacherInfo.value.classes.length > 0 ? teacherInfo.value.classes[teacherInfo.value.classes.length - 1].id : 0
-					currentClassId.value = classId
-					uni.setStorage({
-						key: 'currentClassId',
-						data: currentClassId.value,
-						success: function () {
-							console.log('success');
-							loading.value = false
-						}
-					});
-				},
-				fail(e) {
-					isStorage = false
-				}
-			})
+			teacherInfo.value=uni.getStorageSync('teacherInfo')
+			const classId = typeof teacherInfo.value==='object'&&teacherInfo.value.classes.length > 0 ? teacherInfo.value.classes[teacherInfo.value.classes.length - 1].id : -1
+			currentClassId.value = classId
+			if(classId>-1){
+				uni.setStorage({
+					key: 'currentClassId',
+					data: currentClassId.value,
+					success: function () {
+						console.log('success');
+						loading.value = false
+					}
+				})
+			}else{
+				isStorage = false
+			}
+
 			if (!isStorage) {
+				console.log(teacherInfo.value)
 				// 获取教师详细信息（含学校、教师ID）
 				const teacherRes = await getTeacherInfo()
 				let teacherName = userData.name || userData.username
@@ -332,29 +329,19 @@
 					teacherId: teacherId,
 					classes: classList
 				}
-
-				// 存入本地存储
-				uni.setStorage({
-					key: 'teacherInfo',
-					data: teacherInfo.value,
-					success() {
-						console.log(11111111)
-						// 设置当前班级
-						if (classList.length > 0) {
-							const savedClassId = uni.getStorageSync('currentClassId')
-							let targetClass = classList.find(c => c.id === savedClassId)
-							if (!targetClass) {
-								targetClass = classList.find(c => c.isDefault === true) || classList.reduce((prev, curr) => (curr.id > prev.id ? curr : prev), classList[0])
-							}
-							if (targetClass) {
-								currentClassId.value = targetClass.id
-								uni.setStorageSync('currentClassId', currentClassId.value)
-							}
-							loading.value = false;
-						}
+				uni.setStorageSync('teacherInfo',teacherInfo.value)
+				if (classList.length > 0) {
+					const savedClassId = uni.getStorageSync('currentClassId')
+					let targetClass = classList.find(c => c.id === savedClassId)
+					if (!targetClass) {
+						targetClass = classList.find(c => c.isDefault === true) || classList.reduce((prev, curr) => (curr.id > prev.id ? curr : prev), classList[0])
 					}
-				})
-
+					if (targetClass) {
+						currentClassId.value = targetClass.id
+						uni.setStorageSync('currentClassId', currentClassId.value)
+					}
+					loading.value = false;
+				}
 			}
 
 		} catch (error) {
@@ -413,6 +400,8 @@
 					semester: classForm.semester,
 					class: classForm.classNumber   // 注意字段名是 class
 				}
+				console.log(params)
+				
 				const res = await createClass(params)
 				if (res.code === 1) {
 					ElMessage.success('班级添加成功')

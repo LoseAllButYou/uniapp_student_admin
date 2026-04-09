@@ -355,14 +355,14 @@
 	// ---------- 初始化 ----------
 	const fetchCurrentClass = async () => {
 		try {
-			const classes =await uni.getStorageSync('teacherInfo').classes
-			const currentClassId =await uni.getStorageSync('currentClassId')
-				
-			if(classes.length&&currentClassId){
-				currentClass.value = classes.filter(item => item.id ==currentClassId)[0];
+			const classes = await uni.getStorageSync('teacherInfo').classes
+			const currentClassId = await uni.getStorageSync('currentClassId')
+
+			if (classes.length && currentClassId) {
+				currentClass.value = classes.filter(item => item.id == currentClassId)[0];
 			}
-			else{
-				currentClass.value= {}
+			else {
+				currentClass.value = {}
 			}
 			console.log(currentClass.value)
 			// 获取年级选项（从班级信息中提取，实际可从班级的 grade 字段取）
@@ -432,7 +432,16 @@
 		console.log(currentClass)
 		if (!currentClass.value) return
 		const res = await getGroupList({ class_id: currentClass.value.id })
-		if (res.code === 1) groupList.value = res.data
+		if (res.code === 1) {
+			groupList.value = res.data
+			uni.setStorage({
+				key: 'group',
+				data: groupList.value,
+				success: function () {
+					console.log('success');
+				}
+			})
+		}
 	}
 
 	// 获取小组及成员列表（用于积分弹窗）
@@ -632,6 +641,7 @@
 				ElMessage.success(`已为 ${personalScoreForm.studentName} ${delta > 0 ? '+' : ''}${delta} 分，原因：${reasonText}`)
 				personalScoreDialogVisible.value = false
 				await fetchAllStudents()  // 刷新列表
+				loadGroupMembers()
 			} else {
 				ElMessage.error(res.msg || '操作失败')
 			}
@@ -663,6 +673,13 @@
 					...s,
 					stu_group_info_id: s.stu_group_info_id ?? s.stu_group_info_id ?? null
 				}))
+				uni.setStorage({
+					key: 'student',
+					data: res.data,
+					success: function () {
+						console.log('success');
+					}
+				})
 				applyFilter()
 			} else {
 				ElMessage.error(res.msg || '获取学生列表失败')
@@ -1084,11 +1101,11 @@
 	}
 
 	onMounted(async () => {
-		uni.$on('storage',fetchCurrentClass)
+		uni.$on('storage', fetchCurrentClass)
 		await fetchCurrentClass()
 	})
-	onUnmounted(async ()=>{
-		uni.$off('storage',fetchCurrentClass)
+	onUnmounted(async () => {
+		uni.$off('storage', fetchCurrentClass)
 	})
 </script>
 

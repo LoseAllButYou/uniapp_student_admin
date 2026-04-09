@@ -118,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, onMounted, onUnmounted } from 'vue'
+	import { ref, onMounted ,onUnmounted} from 'vue'
 	import { ElMessage } from 'element-plus'
 	import * as XLSX from 'xlsx'
 	import { getCompalteScores } from '@/api/request'
@@ -222,36 +222,23 @@
 		})
 	}
 
-	// 加载本地学生和小组数据，并校验班级一致性
-	const loadLocalData = () : Promise<boolean> => {
+	// 加载本地学生和小组数据
+	const loadLocalData = () : Promise<void> => {
 		return new Promise((resolve) => {
 			uni.getStorage({
 				key: 'student',
 				success(res) {
-					const studentData = Array.isArray(res.data.list) ? res.data.list : []
-					// 检查学生数据是否与当前班级匹配（如果有学生数据且班级ID不匹配）
-					if (studentData.length > 0 && currentClass.value) {
-						const firstStudent = studentData[0]
-						if (firstStudent.stu_class_id && firstStudent.stu_class_id !== currentClass.value.id) {
-							ElMessage.error('当前班级与本地学生数据不匹配，请先到学生管理界面获取当前班级学生数据')
-							localStudents.value = []
-							totalStudents.value = 0
-							localGroups.value = []
-							resolve(false)
-							return
-						}
-					}
-					localStudents.value = studentData
+					localStudents.value = Array.isArray(res.data.list) ? res.data.list : []
 					totalStudents.value = localStudents.value.length
 					uni.getStorage({
 						key: 'group',
 						success(groupRes) {
 							localGroups.value = Array.isArray(groupRes.data) ? groupRes.data : []
-							resolve(true)
+							resolve()
 						},
 						fail() {
 							localGroups.value = []
-							resolve(true)
+							resolve()
 						}
 					})
 				},
@@ -262,11 +249,11 @@
 						key: 'group',
 						success(groupRes) {
 							localGroups.value = Array.isArray(groupRes.data) ? groupRes.data : []
-							resolve(true)
+							resolve()
 						},
 						fail() {
 							localGroups.value = []
-							resolve(true)
+							resolve()
 						}
 					})
 				}
@@ -274,6 +261,7 @@
 		})
 	}
 
+	// 核心聚合函数：根据 selectedWeek 计算学生和小组积分
 	const aggregateScores = (records : ScoreRecord[]) => {
 		console.log('开始聚合，周次筛选:', selectedWeek.value)
 		console.log('原始积分记录数:', records.length)
@@ -318,13 +306,13 @@
 			}
 		}
 
-		// 4. 学生排名：所有学生统一按总分降序，总分相同按 id 升序
+		// 4. 学生排名：正分（>0）降序在前，非正分（<=0）按 id 升序在后
 		const studentList = Array.from(studentMap.values())
-		studentList.sort((a, b) => {
-			if (a.total !== b.total) return b.total - a.total
-			return a.id - b.id
-		})
-		studentRank.value = studentList
+		const positiveStudents = studentList.filter(s => s.total > 0)
+		const nonPositiveStudents = studentList.filter(s => s.total <= 0)
+		positiveStudents.sort((a, b) => b.total - a.total)
+		nonPositiveStudents.sort((a, b) => a.id - b.id)
+		studentRank.value = [...positiveStudents, ...nonPositiveStudents]
 		console.log('学生排名数量:', studentRank.value.length)
 
 		// 5. 构建小组排名
@@ -354,16 +342,13 @@
 					return { id: stu.id, name: stu.name, score }
 				})
 			if (members.length === 0) {
-				// 没有成员的小组跳过
+				// 没有成员的小组跳过（也可以选择展示，但无意义）
 				continue
 			}
-			// 小组成员按个人总分降序排序（总分相同按 id 升序）
-			members.sort((a, b) => {
-				if (a.score !== b.score) return b.score - a.score
-				return a.id - b.id
-			})
+			// 小组成员按个人总分降序排序（正分在前，负分在后）
+			members.sort((a, b) => b.score - a.score)
 
-			// 计算小组总分和平均分
+			// 计算小组总分
 			const total = members.reduce((sum, m) => sum + m.score, 0)
 			const avg = parseFloat((total / members.length).toFixed(2))
 
@@ -377,27 +362,18 @@
 			})
 		}
 
-		// 小组排名：所有小组统一按平均分降序，平均分相同按 id 升序
-		groupList.sort((a, b) => {
-			if (a.avg !== b.avg) return b.avg - a.avg
-			return a.id - b.id
-		})
-		groupRank.value = groupList
+		// 小组排名：平均分 > 0 的按平均分降序在前，平均分 <= 0 的按 id 升序在后
+		const positiveAvgGroups = groupList.filter(g => g.avg > 0)
+		const nonPositiveAvgGroups = groupList.filter(g => g.avg <= 0)
+		positiveAvgGroups.sort((a, b) => b.avg - a.avg)
+		nonPositiveAvgGroups.sort((a, b) => a.id - b.id)
+		groupRank.value = [...positiveAvgGroups, ...nonPositiveAvgGroups]
 		console.log('小组排名数量:', groupRank.value.length)
 	}
+
 	// 获取积分数据并计算排名
 	const fetchRanks = async () => {
 		if (!currentClass.value) return
-		// 再次检查学生数据是否匹配（防止异步中班级切换）
-		if (localStudents.value.length > 0) {
-			const firstStudent = localStudents.value[0]
-			if (firstStudent.stu_class_id && firstStudent.stu_class_id !== currentClass.value.id) {
-				ElMessage.error('当前班级与本地学生数据不匹配，请先到学生管理界面获取当前班级学生数据')
-				studentRank.value = []
-				groupRank.value = []
-				return
-			}
-		}
 		loading.value = true
 		try {
 			let semester = currentClass.value.semester
@@ -509,31 +485,19 @@
 
 	// 初始化
 	onMounted(async () => {
-		// 监听 storage 变化事件（班级切换时重新加载）
-		uni.$on('storage', async () => {
-			const hasClass = await loadClassInfo()
+		uni.$on('storage',async () => {
+			await loadClassInfo()
 			if (!hasClass) return
-			const isValid = await loadLocalData()
-			if (isValid) {
-				await fetchRanks()
-			} else {
-				// 数据不匹配，清空排名
-				studentRank.value = []
-				groupRank.value = []
-			}
+			await loadLocalData()
+			await fetchRanks()
 		})
 		const hasClass = await loadClassInfo()
 		if (!hasClass) return
-		const isValid = await loadLocalData()
-		if (isValid) {
-			await fetchRanks()
-		} else {
-			studentRank.value = []
-			groupRank.value = []
-		}
+		await loadLocalData()
+		await fetchRanks()
 	})
-	onUnmounted(() => {
-		uni.$off('storage')
+	onUnmounted(async () => {
+		uni.$off('storage', loadClassInfo)
 	})
 </script>
 

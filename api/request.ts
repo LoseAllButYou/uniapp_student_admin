@@ -246,3 +246,12 @@ export const getScoreReasons = () => {
 export const getAllClassScores = (params: { classId: number }) => {
   return request({ url: '/stu/teacher/getAllClassScores', method: 'POST', data: params })
 }
+
+/**
+ * 获取班级所有学生的积分记录（详细接口，用来排名）
+ * @param params { classId: number }
+ * @returns Promise<{ code: number, msg: string, data: Array<{ studentId: number, week: number, dayOfWeek: number, score: number }> }>
+ */
+export const getCompalteScores = (params: { classId: number }) => {
+  return request({ url: '/stu/teacher/getCompalteScores', method: 'POST', data: params })
+}
