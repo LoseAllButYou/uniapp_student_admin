@@ -132,23 +132,6 @@ export const getGroupRank = () => {
 	return request({ url: '/stu/rank/group', method: 'GET' })
 }
 
-// ==================== 积分商城相关 API ====================
-
-// 获取奖品列表
-export const getRewardList = () => {
-	return request({ url: '/stu/reward/list', method: 'GET' })
-}
-
-// 兑换奖品
-export const exchangeReward = (data : { reward_id : number; student_id : number }) => {
-	return request({ url: '/stu/reward/exchange', method: 'POST', data })
-}
-
-// 获取我的兑换记录
-export const getMyExchanges = (params : { student_id : number }) => {
-	return request({ url: '/stu/reward/myExchanges', method: 'GET', data: params })
-}
-
 // ==================== 学生管理相关 API ====================
 
 // 获取班级列表（用于筛选，与教师班级不同，可传参数）
@@ -254,4 +237,75 @@ export const getAllClassScores = (params: { classId: number }) => {
  */
 export const getCompalteScores = (params: { classId: number }) => {
   return request({ url: '/stu/teacher/getCompalteScores', method: 'POST', data: params })
+}
+
+// ==================== 积分商城相关 API ====================
+
+
+// 获取奖品列表（按班级筛选）
+export const getRewardList = (params: { class_id: number }) => {
+  return request({ url: '/stu/reward/list', method: 'GET', data: params })
+}
+
+// 兑换奖品
+export const exchangeReward = (data: {
+  reward_id: number
+  target_id: number      // 学生ID或小组ID
+  target_type: string    // 'student' 或 'group'
+  week?: number          // 周奖时需要
+}) => {
+  return request({ url: '/stu/reward/exchange', method: 'POST', data })
+}
+
+// 获取我的兑换记录
+export const getMyExchanges = (params: { student_id: number }) => {
+  return request({ url: '/stu/reward/myExchanges', method: 'GET', data: params })
+}
+
+
+export const addReward = (data: any) => {
+  return request({ url: '/stu/reward/add', method: 'POST', data })
+}
+
+export const editReward = (data: any) => {
+  return request({ url: '/stu/reward/edit', method: 'POST', data })
+}
+
+export const deleteReward = (data: { id: number }) => {
+  return request({ url: '/stu/reward/delete', method: 'POST', data })
+}
+// 批量兑换（类型1、2）
+export const batchExchange = (data: { exchanges: any[] }) => {
+	return request({
+		url: '/stu/reward/batchExchange',
+		method: 'POST',
+		data
+	})
+}
+
+// 批量发放小组奖品（类型3、4）
+export const batchGrantGroup = (data: { grants: any[] }) => {
+	return request({
+		url: '/stu/reward/batchGrantGroup',
+		method: 'POST',
+		data
+	})
+}
+
+// 获取兑换记录列表
+export const getExchangeList = (params: { class_id: number }) => {
+	return request({
+		url: '/stu/reward/myExchanges',
+		method: 'GET',
+		data: params
+	})
+}
+
+// 更新兑换记录状态
+export const updateExchangeStatus = (data: { id: number; status: number }) => {
+	return request({
+		url: '/stu/reward/updateExchangeStatus',
+		method: 'POST',
+		data
+	})
 }
