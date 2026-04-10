@@ -145,8 +145,21 @@
 		</el-dialog>
 
 		<!-- 兑换记录管理弹窗 -->
-		<el-dialog v-model="exchangeRecordDialog.visible" title="兑换记录管理" width="90%" top="5vh">
-			<el-table :data="exchangeRecordList" stripe v-loading="recordLoading" border>
+		<el-dialog v-model="exchangeRecordDialog.visible" title="兑换记录管理" width="90%" top="5vh" center=true>
+			<template #header>
+				<div >
+					 <h3 type="primary">兑换记录管理</h3>
+				</div>
+				
+			</template>
+			<div style="margin-bottom: 10px;">
+				<el-button  type="warning" size="default"
+					@click="updateExchangeStatus(multipleSelection)">
+					一键选中操作
+				</el-button>
+			</div>
+			<el-table :data="exchangeRecordList" stripe v-loading="recordLoading" border @selection-change="handleSelectionChange"  height='75vh'>
+				<el-table-column type="selection" width="55" :selectable="selectable"/>
 				<el-table-column prop="reward_name" label="奖品名称" width="150" />
 				<el-table-column prop="reward_type" label="奖品类型" width="120" :formatter="formatType" />
 				<el-table-column prop="target_type" label="对象类型" width="100">
@@ -248,6 +261,7 @@
 	// 兑换记录
 	const exchangeRecordDialog = ref({ visible: false })
 	const exchangeRecordList = ref<any[]>([])
+	const multipleSelection = ref(null)
 	const recordLoading = ref(false)
 
 	// 商品管理
@@ -286,7 +300,15 @@
 	const totalGrantQuantity = computed(() => {
 		return groupRankList.value.reduce((sum, _, idx) => sum + getGrantQuantity(idx), 0)
 	})
-
+	
+	//兑换记录管理，多选列表改变事件
+	const handleSelectionChange = async (list:[])=>{
+		multipleSelection.value = list
+		console.log(multipleSelection)
+	}
+	
+	const selectable = (row)=>row.status === 2
+	
 	// 刷新兑换学生列表
 	const refreshEligibleStudents = async () => {
 		const reward = exchangeDialog.value.reward
@@ -300,8 +322,8 @@
 			if (reward.type === 1) {
 				// 学生总积分筛选
 				list = studentTotalScores.value
-					.filter(s => s.total >= requiredPoints)
-					.map(s => ({ id: s.id, name: s.name, currentPoints: s.total }))
+					.filter(s => s.total >= requiredPoints&&s.current>= requiredPoints)
+					.map(s => ({ id: s.id, name: s.name, currentPoints: s.current }))
 			} else if (reward.type === 2) {
 				// 学生周积分筛选
 				if (!exchangeWeek.value) {
@@ -313,8 +335,8 @@
 					currentClass.value!.semester || 1, exchangeWeek.value)
 				const weekScores = calculateStudentWeekScores(records, exchangeWeek.value, localStudents.value)
 				list = weekScores
-					.filter(s => s.total >= requiredPoints)
-					.map(s => ({ id: s.id, name: s.name, currentPoints: s.total }))
+					.filter(s => s.total >= requiredPoints&&s.current>= requiredPoints)
+					.map(s => ({ id: s.id, name: s.name, currentPoints: s.current }))
 			}
 
 			list.sort((a, b) => b.currentPoints - a.currentPoints)
@@ -506,13 +528,26 @@
 	}
 
 	// 更新兑换记录状态
-	const updateExchangeStatus = async (row : any) => {
+	const updateExchangeStatus = async (row : any[]|object) => {
 		try {
 			await ElMessageBox.confirm(`确定将“${row.reward_name}”标记为已发放吗？`, '确认', { type: 'info' })
 		} catch {
 			return
 		}
 		try {
+			if(row.length != null){
+				row.forEach(r=>{
+					const res = updateStatus({ id: r.id, status: 1 })
+					if (res.code === 1) {
+						openExchangeRecordDialog()
+					} else {
+						ElMessage.error(res.msg || '更新失败')
+					}
+				})
+				ElMessage.success('状态更新成功')
+				return
+			}
+			console.log(11111)
 			const res = await updateStatus({ id: row.id, status: 1 })
 			if (res.code === 1) {
 				ElMessage.success('状态更新成功')

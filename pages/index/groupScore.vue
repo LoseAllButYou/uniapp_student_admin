@@ -8,11 +8,11 @@
 				</div>
 			</div>
 			<div class="week-bar">
-				<el-select v-model="selectedSemester" placeholder="选择学期" style="width: 120px; margin-right: 12px;"
+				<!-- 				<el-select v-model="selectedSemester" placeholder="选择学期" style="width: 120px; margin-right: 12px;"
 					@change="onSemesterChange">
 					<el-option label="上学期" :value="1" />
 					<el-option label="下学期" :value="2" />
-				</el-select>
+				</el-select> -->
 				<el-select v-model="selectedWeek" placeholder="选择周次" style="width: 120px" :disabled="!selectedSemester"
 					@change="onWeekSelect">
 					<el-option v-for="w in availableWeeks" :key="w" :label="`第${w}周`" :value="w" />
@@ -23,7 +23,7 @@
 		</el-card>
 		<el-card class="table-card" shadow="hover" v-loading="loading">
 			<div class="table-title">
-				<h2>{{ schoolInfo }}{{ className }} 第{{ selectedWeek }}周积分汇总表</h2>
+				<h2>{{ schoolInfo }}{{ className }} {{selectedSemester==1?'上学期':'下学期'}} 第{{ selectedWeek }}周积分汇总表</h2>
 			</div>
 			<el-table :data="tableData" border stripe style="width: 100%" :span-method="spanMethod"
 				:header-cell-style="{ background: '#f5f7fa', color: '#1e293b', fontWeight: 'bold' }">
@@ -138,6 +138,8 @@
 	import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
 	import { ElMessage, ElMessageBox } from 'element-plus'
 	import * as XLSX from 'xlsx'
+	import * as XLSXStyleVite from 'xlsx-style-vite'
+	import FileSaver from 'file-saver'
 	import { getGroupList, getStudentList, getClasses, addStudentScore, batchAddStudentScore, getAllClassScores } from '@/api/request'
 
 	// ---------- 学校/班级信息 ----------
@@ -195,6 +197,7 @@
 					className.value = cls.name
 					classGrade.value = cls.grade || 1
 					schoolInfo.value = teacherInfo.school || ''
+					selectedSemester.value = cls.semester
 					return
 				}
 			}
@@ -205,6 +208,7 @@
 				classId.value = cls.id
 				className.value = cls.name
 				classGrade.value = cls.grade || 1
+				selectedSemester.value = cls.semester
 				const teacherRes = uni.getStorageSync('teacherInfo')
 				schoolInfo.value = teacherRes.school || ''
 			} else {
@@ -219,20 +223,20 @@
 	// ---------- 获取小组列表 ----------
 	// 替换原有的 fetchGroups 函数
 	const fetchGroups = async () => {
-	  if (!classId.value) return []
-	  const res = await getGroupList({ class_id: classId.value })
-	  if (res.code === 1) {
-	    // 按小组名称中的数字从小到大排序
-	    const groups = res.data
-	    groups.sort((a: any, b: any) => {
-	      const numA = parseInt(a.name.match(/\d+/)?.[0] || '0')
-	      const numB = parseInt(b.name.match(/\d+/)?.[0] || '0')
-	      return numA - numB
-	    })
-	    groupsData.value = groups
-	    return groupsData.value
-	  }
-	  return []
+		if (!classId.value) return []
+		const res = await getGroupList({ class_id: classId.value })
+		if (res.code === 1) {
+			// 按小组名称中的数字从小到大排序
+			const groups = res.data
+			groups.sort((a : any, b : any) => {
+				const numA = parseInt(a.name.match(/\d+/)?.[0] || '0')
+				const numB = parseInt(b.name.match(/\d+/)?.[0] || '0')
+				return numA - numB
+			})
+			groupsData.value = groups
+			return groupsData.value
+		}
+		return []
 	}
 
 	// ---------- 获取学生列表 ----------
@@ -248,9 +252,7 @@
 
 	// ---------- 一次性获取该班级所有积分记录并构建缓存 ----------
 	const fetchAllScoresAndBuildCache = async () => {
-		console.log(1111)
 		if (!classId.value) return
-		console.log(1111)
 		try {
 			// 调用新接口：获取该班级所有积分记录（不分周次）
 			// 假设返回格式：{ code:1, data: [{ studentId, week, dayOfWeek, score }] }
@@ -403,7 +405,6 @@
 	  groupScores.forEach((g, idx) => { g.rank = idx + 1 })
 	
 	  // 5. 生成表格行（按照 groupsData 的原始顺序，即按名称数字排序）
-	  // 注意：排名已经计算，但表格展示顺序应该按小组名称数字顺序，而不是排名顺序
 	  const orderedGroups = [...groupScores].sort((a, b) => {
 	    const numA = parseInt(a.groupName.match(/\d+/)?.[0] || '0')
 	    const numB = parseInt(b.groupName.match(/\d+/)?.[0] || '0')
@@ -424,15 +425,16 @@
 	        member5: g.daysData[day][4],
 	        member6: g.daysData[day][5],
 	        member7: g.daysData[day][6],
-	        groupTotal: '',
-	        avgScore: '',
-	        rank: '',
+	        // 关键修改：明细行也填充小组总分、平均分、排名，以便合并后显示
+	        groupTotal: g.groupTotal,
+	        avgScore: g.avgScore,
+	        rank: g.rank,
 	        isSummary: false,
 	        groupId: g.groupId
 	      }
 	      rows.push(row)
 	    }
-	    // 合计行
+	    // 合计行（虽然数据已填充，但保留合计行用于导出或备用）
 	    const summaryRow: any = {
 	      groupName: g.groupName,
 	      day: '合计',
@@ -454,16 +456,22 @@
 	  tableData.value = rows
 	}
 	// ---------- 合并单元格 ----------
-	const spanMethod = ({ row, column, rowIndex, columnIndex }: any) => {
-	  // 只合并组别列（第一列）
-	  if (columnIndex === 0) {
-	    const groupRows = tableData.value.filter(r => r.groupId === row.groupId)
-	    const firstIndex = tableData.value.findIndex(r => r.groupId === row.groupId)
-	    if (firstIndex === rowIndex) return { rowspan: groupRows.length, colspan: 1 }
-	    return { rowspan: 0, colspan: 0 }
-	  }
-	  // 其他列不合并（包括小组总分、平均分、排名）
-	  return { rowspan: 1, colspan: 1 }
+	const spanMethod = ({ row, column, rowIndex, columnIndex } : any) => {
+		// 需要合并的列索引：组别(0)，小组总分(9)，平均分(10)，排名(11)
+		const mergeColumns = [0, 9, 10, 11]
+		if (mergeColumns.includes(columnIndex)) {
+			// 获取当前小组的所有行（同一 groupId 且连续）
+			const groupRows = tableData.value.filter(r => r.groupId === row.groupId)
+			const firstIndex = tableData.value.findIndex(r => r.groupId === row.groupId)
+			if (firstIndex === rowIndex) {
+				// 第一行：合并整个小组的行数
+				return { rowspan: groupRows.length, colspan: 1 }
+			}
+			// 其余行：被合并，不显示
+			return { rowspan: 0, colspan: 0 }
+		}
+		// 其他列不合并
+		return { rowspan: 1, colspan: 1 }
 	}
 
 	const getRankType = (rank : number) => {
@@ -475,6 +483,7 @@
 
 	// ---------- 个人分数编辑 ----------
 	const openStudentScoreEditor = (row : any, memberNumber : number) => {
+		return
 		if (row.isSummary) {
 			ElMessage.warning('合计行不能修改')
 			return
@@ -536,6 +545,7 @@
 
 	// ---------- 小组批量加减分 ----------
 	const handleGroupClick = (groupName : string) => {
+		return
 		ElMessageBox.prompt('请输入要操作的星期 (周一~周五)', '选择星期', {
 			confirmButtonText: '下一步',
 			cancelButtonText: '取消',
@@ -595,43 +605,128 @@
 	}
 
 	// ---------- 导出 Excel ----------
-	const exportToExcel = () => {
-		const exportData : any[][] = []
-		exportData.push([`${schoolInfo.value}${className.value} 第${selectedWeek.value}周积分汇总表`, '', '', '', '', '', '', '', '', '', '', ''])
-		exportData.push(['组别', '时间', '1号组员', '2号组员', '3号组员', '4号组员', '5号组员', '6号组员', '7号组员', '小组总分', '平均分', '排名'])
+// 辅助函数：字符串转 ArrayBuffer
+const s2ab = (s) => {
+  const buf = new ArrayBuffer(s.length)
+  const view = new Uint8Array(buf)
+  for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF
+  return buf
+}
 
-		let currentGroupName = ''
-		for (let row of tableData.value) {
-			const exportRow = []
-			if (row.groupName !== currentGroupName) {
-				exportRow.push(row.groupName)
-				currentGroupName = row.groupName
-			} else {
-				exportRow.push('')
-			}
-			exportRow.push(row.day)
-			exportRow.push(row.member1 !== null ? row.member1 : (row.member1 === null ? 'x' : ''))
-			exportRow.push(row.member2 !== null ? row.member2 : (row.member2 === null ? 'x' : ''))
-			exportRow.push(row.member3 !== null ? row.member3 : (row.member3 === null ? 'x' : ''))
-			exportRow.push(row.member4 !== null ? row.member4 : (row.member4 === null ? 'x' : ''))
-			exportRow.push(row.member5 !== null ? row.member5 : (row.member5 === null ? 'x' : ''))
-			exportRow.push(row.member6 !== null ? row.member6 : (row.member6 === null ? 'x' : ''))
-			exportRow.push(row.member7 !== null ? row.member7 : (row.member7 === null ? 'x' : ''))
-			if (row.isSummary) {
-				exportRow.push(row.groupTotal, row.avgScore, row.rank)
-			} else {
-				exportRow.push('', '', '')
-			}
-			exportData.push(exportRow)
-		}
+const exportToExcel = () => {
+  // 1. 定义表头列配置（与页面表格结构完全一致）
+  const titleText = `${schoolInfo.value} ${className.value} ${selectedSemester.value == 1 ? '上学期' : '下学期'} 第${selectedWeek.value}周积分汇总表`
+  const columns = [
+    { label: '组别', property: 'groupName', width: 12 },
+    { label: '时间', property: 'day', width: 10 },
+    { label: '1号组员', property: 'member1', width: 8 },
+    { label: '2号组员', property: 'member2', width: 8 },
+    { label: '3号组员', property: 'member3', width: 8 },
+    { label: '4号组员', property: 'member4', width: 8 },
+    { label: '5号组员', property: 'member5', width: 8 },
+    { label: '6号组员', property: 'member6', width: 8 },
+    { label: '7号组员', property: 'member7', width: 8 },
+    { label: '小组总分', property: 'groupTotal', width: 10 },
+    { label: '平均分', property: 'avgScore', width: 8 },
+    { label: '排名', property: 'rank', width: 6 }
+  ]
 
-		const ws = XLSX.utils.aoa_to_sheet(exportData)
-		const wb = XLSX.utils.book_new()
-		XLSX.utils.book_append_sheet(wb, ws, `第${selectedWeek.value}周积分表`)
-		XLSX.writeFile(wb, `班级第${selectedWeek.value}周积分汇总表.xlsx`)
-		ElMessage.success('导出成功')
-	}
+  // 2. 生成表头行
+  const headerRow = columns.map(col => col.label)
 
+  // 3. 生成数据行
+  const dataRows = tableData.value.map(row => {
+    return columns.map(col => {
+      let val = row[col.property]
+      if (val === null || val === undefined) {
+        if (col.property.startsWith('member')) return 'x'
+        return ''
+      }
+      return val
+    })
+  })
+
+  // 4. 构建标题行（扩展为与列数相同的数组）
+  const titleRow = Array(columns.length).fill('')
+  titleRow[0] = titleText
+
+  // 5. 构建完整工作表数据（标题行 + 表头行 + 数据行）
+  const sheetData = [titleRow, headerRow, ...dataRows]
+  const ws = XLSX.utils.aoa_to_sheet(sheetData)
+
+  // 6. 合并单元格：标题行合并所有列
+  const merges = [{ s: { r: 0, c: 0 }, e: { r: 0, c: columns.length - 1 } }]
+
+  // 7. 计算小组合并单元格（组别列、小组总分、平均分、排名）
+  const groupMap = new Map()
+  let currentGroup = null
+  let startIdx = null
+  for (let i = 0; i < tableData.value.length; i++) {
+    const row = tableData.value[i]
+    if (row.groupName !== currentGroup) {
+      if (currentGroup !== null && startIdx !== null) {
+        groupMap.set(currentGroup, { start: startIdx, end: i - 1 })
+      }
+      currentGroup = row.groupName
+      startIdx = i
+    }
+  }
+  if (currentGroup !== null && startIdx !== null) {
+    groupMap.set(currentGroup, { start: startIdx, end: tableData.value.length - 1 })
+  }
+
+  const mergeColIndexes = [0, 9, 10, 11] // 组别, 小组总分, 平均分, 排名
+  for (let [_, range] of groupMap.entries()) {
+    if (range.start === range.end) continue
+    for (let col of mergeColIndexes) {
+      merges.push({
+        s: { r: range.start + 2, c: col }, // +2 因为标题行占1行，表头行占1行
+        e: { r: range.end + 2, c: col }
+      })
+    }
+  }
+  ws['!merges'] = merges
+
+  // 8. 设置列宽
+  ws['!cols'] = columns.map(col => ({ wch: col.width }))
+
+  // 9. 设置单元格样式
+  const range = XLSX.utils.decode_range(ws['!ref'])
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cellRef = XLSX.utils.encode_cell({ r: R, c: C })
+      if (!ws[cellRef]) continue
+      if (R === 0) {
+        // 标题行样式：加粗大号居中
+        ws[cellRef].s = {
+          font: { bold: true, sz: 16, name: '宋体' },
+          alignment: { horizontal: 'center', vertical: 'center' }
+        }
+      } else if (R === 1) {
+        // 表头样式
+        ws[cellRef].s = {
+          font: { bold: true, sz: 11, name: '宋体' },
+          alignment: { horizontal: 'center', vertical: 'center' },
+          fill: { fgColor: { rgb: 'F5F7FA' } }
+        }
+      } else {
+        // 数据行样式
+        const isSummaryCol = C === 9 || C === 10 || C === 11
+        ws[cellRef].s = {
+          font: { bold: isSummaryCol, sz: 10, name: '宋体', color: isSummaryCol ? { rgb: 'E6A23C' } : undefined },
+          alignment: { horizontal: 'center', vertical: 'center' }
+        }
+      }
+    }
+  }
+
+  // 10. 导出文件
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, `第${selectedWeek.value}周积分表`)
+  const wbout = XLSXStyleVite.write(wb, { bookType: 'xlsx', type: 'binary', cellStyles: true })
+  FileSaver.saveAs(new Blob([s2ab(wbout)], { type: 'application/octet-stream' }), `班级第${selectedWeek.value}周积分汇总表.xlsx`)
+  ElMessage.success('导出成功')
+}
 	const refreshData = () => {
 		if (selectedWeek.value) {
 			buildTableByWeek(selectedWeek.value)
@@ -650,9 +745,9 @@
 			await Promise.all([fetchGroups(), fetchStudents()])
 			await fetchAllScoresAndBuildCache()
 
-			// 设置默认学期（根据当前月份）
-			const month = new Date().getMonth() + 1
-			selectedSemester.value = (month >= 3 && month <= 8) ? 2 : 1
+			// // 设置默认学期（根据当前月份）
+			// const month = new Date().getMonth() + 1
+			// selectedSemester.value = (month >= 3 && month <= 8) ? 2 : 1
 
 			updateAvailableWeeks()
 			if (availableWeeks.value.length > 0) {
@@ -671,12 +766,12 @@
 	}
 
 	onMounted(() => {
-		uni.$on('storage',init)
+		uni.$on('storage', init)
 		init()
 	})
-	
-	onUnmounted(async ()=>{
-		uni.$off('storage',init)
+
+	onUnmounted(async () => {
+		uni.$off('storage', init)
 	})
 </script>
 

@@ -97,6 +97,7 @@ export function useClassData() {
             }
           }
           localStudents.value = studentData
+		  console.log(localStudents.value)
           totalStudents.value = localStudents.value.length
           uni.getStorage({
             key: 'group',

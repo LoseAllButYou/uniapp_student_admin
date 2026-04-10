@@ -25,7 +25,7 @@
 		<!-- 新增：年级/学期/周次筛选栏 -->
 		<el-card class="filter-card" shadow="never">
 			<div class="score-filter-bar">
-				<el-select v-model="selectedGrade" placeholder="选择年级" style="width: 140px"
+				<!-- 				<el-select v-model="selectedGrade" placeholder="选择年级" style="width: 140px"
 					@change="onGradeOrSemesterChange">
 					<el-option v-for="grade in gradeOptions" :key="grade" :label="grade+'年级'" :value="grade" />
 				</el-select>
@@ -33,18 +33,16 @@
 					@change="onGradeOrSemesterChange">
 					<el-option label="上学期" :value="1" />
 					<el-option label="下学期" :value="2" />
-				</el-select>
-				<el-select v-model="selectedWeek" placeholder="选择周次" style="width: 120px"
-					:disabled="!selectedGrade || !selectedSemester" @change="onWeekChange">
-					<el-option v-for="w in availableWeeks" :key="w" :label="`第${w}周`" :value="w" />
-				</el-select>
+				</el-select> -->
 				<el-button type="primary" plain @click="openScoreDialog" :disabled="!selectedWeek">积分操作</el-button>
+				<el-button type="primary" plain
+					@click="complateInfo=!complateInfo">{{!complateInfo?'详细信息':'简要信息'}}</el-button>
 			</div>
 		</el-card>
 		<!-- 学生列表（保持不变，但确保 group_id 字段正确） -->
 		<el-card class="table-card" shadow="hover">
 			<el-table :data="studentList" border stripe v-loading="loading">
-				<el-table-column prop="student_no" label="学号" width="120" />
+				<el-table-column prop="student_no" label="学号" width="120" v-if="complateInfo" />
 				<el-table-column prop="name" label="姓名" width="100" />
 				<el-table-column prop="gender" label="性别" width="80" />
 				<el-table-column prop="group_name" label="小组" width="100" />
@@ -52,12 +50,13 @@
 				<el-table-column prop="member_number" label="编号" width="80" align="center">
 					<template #default="{ row }">{{ row.member_number ? `${row.member_number}号` : '-' }}</template>
 				</el-table-column>
-				<el-table-column prop="height" label="身高(cm)" width="100" />
-				<el-table-column prop="vision" label="视力" width="100">
+				<el-table-column prop="height" label="身高(cm)" width="100" v-if="complateInfo" />
+				<el-table-column prop="vision" label="视力" width="100" v-if="complateInfo">
 					<template #default="{ row }">{{ row.vision ? (row.vision / 10).toFixed(1) : '-' }}</template>
 				</el-table-column>
-				<el-table-column prop="score_rank" label="成绩排名" width="100" />
-				<el-table-column prop="total_points" label="总积分" width="100" sortable />
+				<el-table-column prop="score_rank" label="成绩排名" width="100" v-if="complateInfo" />
+				<el-table-column prop="current_points" label="剩余积分" width="100" sortable />
+				<el-table-column prop="total_points" label="累计积分" width="100" sortable />
 				<el-table-column label="操作" width="150" fixed="right">
 					<template #default="{ row }">
 						<el-button type="primary" size="small" @click="openEditDialog(row)">编辑</el-button>
@@ -134,6 +133,12 @@
 		<el-dialog v-model="scoreDialogVisible" title="积分操作" width="80%" top="5vh" :close-on-click-modal="false"
 			class="score-dialog">
 			<div class="score-dialog-header">
+				<el-form-item label="选择周次">
+					<el-select v-model="selectedWeek" placeholder="选择周次" style="width: 120px"
+						:disabled="!selectedGrade || !selectedSemester" @change="onWeekChange">
+						<el-option v-for="w in availableWeeks" :key="w" :label="`第${w}周`" :value="w" />
+					</el-select>
+				</el-form-item>
 				<el-form inline>
 					<el-form-item label="选择星期">
 						<el-select v-model="scoreDayOfWeek" placeholder="请选择星期" style="width: 120px">
@@ -307,6 +312,7 @@
 	const scoreValues = [-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 	// 其他原有状态...
+	const complateInfo = ref(false)
 	const currentClass = ref<any>(null)
 	const groupList = ref<any[]>([])
 	const allStudents = ref<any[]>([])
@@ -384,15 +390,15 @@
 	const calculateDefaultWeek = (semester : number) : number => {
 		const now = new Date()
 		let startDate : Date
-		if (semester === 1) {
-			// 上学期：起始 3月1日
+		if (semester === 2) {
+			// 下学期：起始 9月1日
 			startDate = new Date(now.getFullYear(), 2, 1) // 月份 0-index，3月 => 2
 			// 如果当前日期早于 3月1日，则使用去年的 3月1日（实际上学期已结束，但为了显示，取去年）
 			if (now < startDate) {
 				startDate = new Date(now.getFullYear() - 1, 2, 1)
 			}
 		} else {
-			// 下学期：起始 9月1日
+			// 上学期：起始 3月1日
 			startDate = new Date(now.getFullYear(), 8, 1)
 			if (now < startDate) {
 				startDate = new Date(now.getFullYear() - 1, 8, 1)

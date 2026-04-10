@@ -14,6 +14,7 @@ export interface StudentScore {
   id: number
   name: string
   total: number
+  current:number
   group_id: number
   group_name: string
 }
@@ -51,6 +52,7 @@ export function useScoreCalculator() {
         id: stu.id,
         name: stu.name,
         total: 0,
+		current:stu.current_points,
         group_id: stu.stu_group_info_id,
         group_name: stu.group_name || ''
       })
@@ -64,6 +66,7 @@ export function useScoreCalculator() {
           id: r.student_id,
           name: r.student_name,
           total: r.score,
+		  current:0,
           group_id: r.group_id,
           group_name: r.group_name || ''
         })
@@ -143,15 +146,6 @@ export function useScoreCalculator() {
     return calculateGroupTotalRank(studentScores, localGroups)
   }
 
-  // 获取符合条件的学生列表（总积分）
-  const getEligibleStudentsByTotal = (studentScores: StudentScore[], requiredPoints: number): StudentScore[] => {
-    return studentScores.filter(s => s.total >= requiredPoints)
-  }
-
-  // 获取符合条件的学生列表（周积分）
-  const getEligibleStudentsByWeek = (weekStudentScores: StudentScore[], requiredPoints: number): StudentScore[] => {
-    return weekStudentScores.filter(s => s.total >= requiredPoints)
-  }
 
   return {
     fetchScoreRecords,
@@ -161,7 +155,5 @@ export function useScoreCalculator() {
     calculateGroupWeekRank,
     getGroupWeekRank,
     getGroupTotalRank,
-    getEligibleStudentsByTotal,
-    getEligibleStudentsByWeek
   }
 }
