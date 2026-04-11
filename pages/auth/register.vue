@@ -142,7 +142,7 @@ const handleRegister = async () => {
 }
 
 const goToLogin = () => {
-  router.push('/pages/index/login')
+  router.push('/pages/auth/login')
 }
 
 onMounted(() => {

@@ -75,7 +75,7 @@ const handleLogin = async () => {
 }
 
 const goToRegister = () => {
-  router.push('/pages/index/register')
+  router.push('/pages/auth/register ')
 }
 </script>
 

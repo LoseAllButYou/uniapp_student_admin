@@ -38,7 +38,7 @@ const request = <T = any>(options : UniApp.RequestOptions) : Promise<T> => {
 						uni.removeStorageSync('token')
 						uni.removeStorageSync('userInfo')
 						uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
-						uni.reLaunch({ url: '/pages/index/login' })
+						uni.reLaunch({ url: '/pages/auth/login' })
 						reject(res.data)
 					} else {
 						uni.showToast({ title: res.data.msg || '请求失败', icon: 'none' })
@@ -47,7 +47,7 @@ const request = <T = any>(options : UniApp.RequestOptions) : Promise<T> => {
 				} else if (res.statusCode === 401) {
 					uni.removeStorageSync('token')
 					uni.removeStorageSync('userInfo')
-					uni.reLaunch({ url: '/pages/index/login' })
+					uni.reLaunch({ url: '/pages/auth/login' })
 					reject({ msg: '登录已过期，请重新登录' })
 				} else {
 					uni.showToast({ title: `请求错误 ${res.statusCode}`, icon: 'none' })
@@ -308,4 +308,13 @@ export const updateExchangeStatus = (data: { id: number; status: number }) => {
 		method: 'POST',
 		data
 	})
+}
+
+// 获取学生积分明细记录
+export const getStudentScoreRecords = (params: { studentId: number; week?: number }) => {
+  return request({
+    url: '/api/student/scoreRecords',
+    method: 'GET',
+    data: params
+  })
 }

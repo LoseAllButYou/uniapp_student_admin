@@ -1,63 +1,90 @@
 {
-	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
-		{
-			"path": "pages/index/index",
-			"style": {
-				"navigationBarTitleText": "学生积分管理"
-			}
-		},
-		{
-			"path": "pages/index/student",
-			"style": {
-				"navigationBarTitleText": "学生管理",
-				"navigationBarBackgroundColor": "#ffffff",
-				"navigationBarTextStyle": "black"
-			}
-		},
-		{
-			"path": "pages/index/groupScore",
-			"style": {
-				"navigationBarTitleText": "小组积分管理",
-				"navigationBarBackgroundColor": "#ffffff",
-				"navigationBarTextStyle": "black"
-			}
-		},
-		{
-			"path": "pages/index/reward",
-			"style": {
-				"navigationBarTitleText": "积分商城",
-				"navigationBarBackgroundColor": "#ffffff",
-				"navigationBarTextStyle": "black"
-			}
-		},
-		{
-			"path": "pages/index/rank",
-			"style": {
-				"navigationBarTitleText": "荣誉榜",
-				"navigationBarBackgroundColor": "#ffffff",
-				"navigationBarTextStyle": "black"
-			}
-		},
-
-		{
-			"path": "pages/index/login",
-			"style": {
-				"navigationBarTitleText": "登录"
-			}
-		},
-		{
-			"path": "pages/index/register",
-			"style": {
-				"navigationBarTitleText": "注册"
-			}
-		}
-	],
-	"globalStyle": {
-		"navigationBarTextStyle": "black",
-		"navigationBarTitleText": "uni-app",
-		"navigationBarBackgroundColor": "#F8F8F8",
-		"backgroundColor": "#F8F8F8",
-		"navigationStyle": "custom"
-	},
-	"uniIdRouter": {}
+  "pages": [
+    // 首页（默认启动页，必须放第一个）
+    {
+      "path": "pages/home/index",
+      "style": {
+        "navigationBarTitleText": "积分管理系统首页"
+      }
+    },
+    // 登录注册
+    {
+      "path": "pages/auth/login",
+      "style": {
+        "navigationBarTitleText": "管理员登录"
+      }
+    },
+    {
+      "path": "pages/auth/register",
+      "style": {
+        "navigationBarTitleText": "账号注册"
+      }
+    },
+    // 积分管理
+    {
+      "path": "pages/score/groupScore",
+      "style": {
+        "navigationBarTitleText": "小组积分管理"
+      }
+    },
+    // 积分排名
+    {
+      "path": "pages/rank/rank",
+      "style": {
+        "navigationBarTitleText": "积分排行榜"
+      }
+    },
+    // 积分兑换
+    {
+      "path": "pages/reward/reward",
+      "style": {
+        "navigationBarTitleText": "积分兑换商店"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "学生日常积分管理系统",
+    "navigationBarBackgroundColor": "#409EFF",
+    "backgroundColor": "#F5F7FA",
+	"navigationStyle": "custom"
+  }
+  // ,
+  // 底部导航栏（适配管理系统核心功能）
+  // "tabBar": {
+  //   "color": "#666666",
+  //   "selectedColor": "#409EFF",
+  //   "borderStyle": "black",
+  //   "backgroundColor": "#ffffff",
+  //   "list": [
+  //     {
+  //       "pagePath": "pages/home/index",
+  //       "text": "首页",
+  //       "iconPath": "static/tab/home.png",
+  //       "selectedIconPath": "static/tab/home-active.png"
+  //     },
+  //     {
+  //       "pagePath": "pages/student/student-list",
+  //       "text": "学生管理",
+  //       "iconPath": "static/tab/student.png",
+  //       "selectedIconPath": "static/tab/student-active.png"
+  //     },
+  //     {
+  //       "pagePath": "pages/rank/rank-list",
+  //       "text": "积分排名",
+  //       "iconPath": "static/tab/rank.png",
+  //       "selectedIconPath": "static/tab/rank-active.png"
+  //     },
+  //     {
+  //       "pagePath": "pages/exchange/shop",
+  //       "text": "积分兑换",
+  //       "iconPath": "static/tab/shop.png",
+  //       "selectedIconPath": "static/tab/shop-active.png"
+  //     }
+  //   ]
+  },
+  "uniIdRouter": {},
+  "lazyLoadRule": {
+    "plugins": []
+  }
 }

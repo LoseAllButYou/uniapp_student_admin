@@ -148,10 +148,10 @@
 	import { ref, reactive, onMounted, watch } from 'vue'
 	import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
 	import { DataLine, Present, Trophy, Fold, Expand, User, SwitchButton, Plus, Check } from '@element-plus/icons-vue'
-	import GroupScore from './groupScore.vue'
-	import rank from './rank.vue'
-	import reward from './reward.vue'
-	import student from './student.vue'
+	import GroupScore from '@/pages/score/groupScore.vue'
+	import rank from '@/pages/rank/rank.vue'
+	import reward from '@/pages/reward/reward.vue'
+	import student from '@/pages/student/StudentManage.vue'
 	import { getTeacherInfo, getClasses, tokenLogin, createClass } from '@/api/request'
 
 	const logined = ref(false)
@@ -269,7 +269,7 @@
 		try {
 			const token = uni.getStorageSync('token')
 			if (!token) {
-				uni.reLaunch({ url: '/pages/index/login' })
+				uni.reLaunch({ url: '/pages/auth/login' })
 				return
 			}
 			// 验证 token 有效性
@@ -441,7 +441,7 @@
 			uni.removeStorageSync('userInfo')
 			uni.removeStorageSync('teacherInfo')
 			uni.removeStorageSync('currentClassId')
-			uni.reLaunch({ url: '/pages/index/login' })
+			uni.reLaunch({ url: '/pages/auth/login' })
 		}).catch(() => { })
 	}
 
