@@ -48,7 +48,7 @@
     "navigationBarBackgroundColor": "#409EFF",
     "backgroundColor": "#F5F7FA",
 	"navigationStyle": "custom"
-  }
+  },
   // ,
   // 底部导航栏（适配管理系统核心功能）
   // "tabBar": {
@@ -82,7 +82,7 @@
   //       "selectedIconPath": "static/tab/shop-active.png"
   //     }
   //   ]
-  },
+  // },
   "uniIdRouter": {},
   "lazyLoadRule": {
     "plugins": []

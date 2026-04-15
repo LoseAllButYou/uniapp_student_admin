@@ -318,3 +318,41 @@ export const getStudentScoreRecords = (params: { studentId: number; week?: numbe
     data: params
   })
 }
+
+// ==================== 宠物游戏相关 API ====================
+
+export const getPetTypes = () => {
+  return request({ url: '/stu/gamePet/getPetTypes', method: 'GET' })
+}
+
+export const getPetList = (classId: number) => {
+  return request({ url: `/stu/gamePet/getPetList?class_id=${classId}`, method: 'GET' })
+}
+
+export const adoptPet = (data: { class_id: number; group_id?: number; pet_type: string; pet_name?: string }) => {
+  return request({ url: '/stu/gamePet/adopt', method: 'POST', data })
+}
+
+export const feedPet = (data: { pet_id: number; food_code: string; class_id: number; group_id: number }) => {
+  return request({ url: '/stu/gamePet/feed', method: 'POST', data })
+}
+
+export const interactPet = (data: { pet_id: number; toy_code: string; class_id: number; group_id: number }) => {
+  return request({ url: '/stu/gamePet/interact', method: 'POST', data })
+}
+
+export const getPetFoodList = () => {
+  return request({ url: '/stu/gamePet/getFoodList', method: 'GET' })
+}
+
+export const getPetToyList = () => {
+  return request({ url: '/stu/gamePet/getToyList', method: 'GET' })
+}
+
+export const getPetBag = (classId: number, groupId: number) => {
+  return request({ url: `/stu/gamePet/getBag?class_id=${classId}&group_id=${groupId}`, method: 'GET' })
+}
+
+export const syncPetDecay = (classId: number, pets: Array<{pet_id: number; energy: number; mood: number}>) => {
+  return request({ url: '/stu/gamePet/syncDecay', method: 'POST', data: { class_id: classId, pets } })
+}

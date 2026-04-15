@@ -225,7 +225,7 @@
 	} = useScoreCalculator()
 
 	// ---------- 响应式数据 ----------
-	const defaultImage = '/static/reward-default.png'
+	const defaultImage = '/web/static/reward-default.png'
 	const selectedWeek = ref<number>(0)
 	const availableWeeks = ref<number[]>([])
 	const rewardList = ref<any[]>([])

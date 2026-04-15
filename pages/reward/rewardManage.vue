@@ -94,7 +94,7 @@
 	const { currentClass, className, loadClassInfo, loadLocalData } = useClassData()
 	
 	const rewardList = ref<any[]>([])
-	const defaultImage = '/static/reward-default.png'
+	const defaultImage = '/web/static/reward-default.png'
 	const dialogVisible = ref(false)
 	const dialogTitle = ref('添加商品')
 	const submitLoading = ref(false)

@@ -9,7 +9,7 @@
 						<Expand v-else />
 					</el-icon>
 				</el-button>
-				<el-image style="width: 40px; height: 40px" src="/static/logo.png" />
+				<el-image style="width: 40px; height: 40px" src="/web/static/logo.png" />
 				<span class="logo-text">{{ isCollapse ? '' : '班级积分管理系统' }}</span>
 			</div>
 			<div class="header-right">
@@ -55,6 +55,12 @@
 						</el-icon>
 						<template #title>荣誉榜</template>
 					</el-menu-item>
+					<el-menu-item index="game">
+						<el-icon>
+							<Promotion />
+						</el-icon>
+						<template #title>小组互动游戏</template>
+					</el-menu-item>
 				</el-menu>
 			</el-aside>
 
@@ -71,6 +77,9 @@
 				</div>
 				<div v-else-if="activeMenu === 'student'">
 					<student></student>
+				</div>
+				<div v-else-if="activeMenu === 'game'">
+					<GameCenter></GameCenter>
 				</div>
 			</el-main>
 		</el-container>
@@ -147,11 +156,11 @@
 <script setup lang="ts">
 	import { ref, reactive, onMounted, watch } from 'vue'
 	import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
-	import { DataLine, Present, Trophy, Fold, Expand, User, SwitchButton, Plus, Check } from '@element-plus/icons-vue'
 	import GroupScore from '@/pages/score/groupScore.vue'
 	import rank from '@/pages/rank/rank.vue'
 	import reward from '@/pages/reward/reward.vue'
 	import student from '@/pages/student/StudentManage.vue'
+	import GameCenter from '@/pages/game/index.vue'
 	import { getTeacherInfo, getClasses, tokenLogin, createClass } from '@/api/request'
 
 	const logined = ref(false)
