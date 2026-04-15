@@ -234,10 +234,11 @@
 	const refreshClasses = async () => {
 		try {
 			const classRes = await getClasses()
-			if (classRes.code === 1 && classRes.data) {
+			if (classRes.code === 1 && classRes.data&&classRes.data?.length>0) {
 				const classList = classRes.data.map((cls : any) => ({
 					id: cls.id,
 					name: cls.name,
+					stu_school_id:teacherInfo.value.schoolId,
 					isDefault: cls.isDefault || false
 				}))
 				teacherInfo.value.classes = classList
@@ -246,24 +247,33 @@
 				const storedInfo = uni.getStorageSync('teacherInfo') || {}
 				storedInfo.classes = classList
 				uni.setStorageSync('teacherInfo', storedInfo)
-				
+				console.log(111)
 				// 自动设置当前班级：优先选择 isDefault 为 true 的，否则选择 id 最大的（最新创建的）
 				let defaultClass = classList.find(c => c.isDefault === true)
 				if (!defaultClass && classList.length > 0) {
 					defaultClass = classList.reduce((prev, curr) => (curr.id > prev.id ? curr : prev), classList[0])
+					console.log(111)
 				}
 				if (defaultClass) {
 					currentClassId.value = defaultClass.id
 					uni.setStorageSync('currentClassId', currentClassId.value)
 					// 触发全局事件，通知其他组件班级已更新
+					loading.value = false
 					uni.$emit('storage', { classId: currentClassId.value, classList })
 				} else {
 					currentClassId.value = null
 					uni.removeStorageSync('currentClassId')
+					ElMessage.error('异常清空，请重新登录')
+					setTimeout(()=>uni.reLaunch({
+						url:'/pages/auth/login'
+					}),2000)
 				}
+			}else{
+				console.log(classRes)
+				ElMessage.error('还没有班级信息，请在个人信息界面添加班级')
 			}
 		} catch (error) {
-			console.error('刷新班级列表失败', error)
+			ElMessage.error('还没有班级信息，请在个人信息界面添加班级')
 		}
 	}
 
@@ -327,6 +337,7 @@
 						name: cls.name,
 						grade: cls.grade,
 						semester: cls.semester,
+						stu_school_id:schoolId,
 						class: cls.class,
 						isDefault: cls.isDefault || false
 					}))
@@ -350,11 +361,14 @@
 						uni.setStorageSync('currentClassId', currentClassId.value)
 					}
 					loading.value = false;
+				}else{
+					ElMessage.error('还没有班级信息，请在个人信息界面添加班级')
 				}
 			}
 
 		} catch (error) {
 			console.error('获取用户信息失败', error)
+			ElMessage.error('还没有班级信息，请在个人信息界面添加班级')
 			teacherInfo.value = {
 				name: '教师',
 				school: '',

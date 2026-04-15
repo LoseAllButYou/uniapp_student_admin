@@ -129,7 +129,7 @@ const handleRegister = async () => {
       const result = await register(params)
       if (result.code === 1) {
         ElMessage.success('注册成功，请登录')
-        router.push('/login')
+        goToLogin()
       } else {
         ElMessage.error(result.msg || '注册失败')
       }
@@ -142,7 +142,9 @@ const handleRegister = async () => {
 }
 
 const goToLogin = () => {
-  router.push('/pages/auth/login')
+  uni.redirectTo({
+  	url:'/pages/auth/login'
+  })
 }
 
 onMounted(() => {

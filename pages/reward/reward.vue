@@ -33,11 +33,11 @@
 				<div class="reward-name">{{ item.name }}</div>
 				<div class="reward-type">
 					<el-tag :type="getTypeTagType(item.type)" size="small">{{ getTypeName(item.type) }}</el-tag>
+					<el-tag v-if="isGameRewardType(item.type)" type="danger" size="small" effect="dark" class="game-tag">🎮 游戏</el-tag>
 				</div>
 				<div class="reward-points">{{ item.points }} 积分</div>
 				<div class="reward-stock">库存：{{ item.stock }}</div>
 
-				<!-- 根据类型显示不同按钮 -->
 				<el-button v-if="item.type === 1 || item.type === 2" type="primary" size="small"
 					@click="openExchangeDialog(item)">
 					兑换
@@ -180,12 +180,18 @@
 						</el-tag>
 					</template>
 				</el-table-column>
-				<el-table-column label="操作" width="120" fixed="right">
+				<el-table-column label="操作" width="200" fixed="right">
 					<template #default="{ row }">
-						<el-button v-if="row.status === 2" type="primary" size="small"
-							@click="updateExchangeStatus(row)">
-							{{ row.reward_type === 1 || row.reward_type === 2 ? '发放' : '使用' }}
-						</el-button>
+						<template v-if="row.status === 2">
+							<el-button v-if="!isGameRewardType(row.reward_type)" type="primary" size="small"
+								@click="updateExchangeStatus(row)">
+								发放
+							</el-button>
+							<el-button v-if="isGameRewardType(row.reward_type) && row.target_type === 'group'" type="success" size="small"
+								@click="grantToGameBag(row)">
+								🎮 发到背包
+							</el-button>
+						</template>
 						<span v-else class="done-text">已完成</span>
 					</template>
 				</el-table-column>
@@ -209,10 +215,11 @@
 	import { ref, onMounted, computed ,onUnmounted} from 'vue'
 	import { ElMessage, ElMessageBox } from 'element-plus'
 	import { Setting } from '@element-plus/icons-vue'
-	import { getRewardList, batchExchange, batchGrantGroup, getExchangeList, updateExchangeStatus as updateStatus } from '@/api/request'
+	import { getRewardList, batchExchange, batchGrantGroup, getExchangeList, updateExchangeStatus as updateStatus, batchGrantToGameBag } from '@/api/request'
 	import RewardManager from './rewardManage'
 	import { useClassData } from '@/api/useClassData'
 	import { useScoreCalculator } from '@/api/useScoreCalculator'
+	import { isGameRewardType, getGameConfigByType } from './gameItemConfig'
 
 	// ---------- 复用 composables ----------
 	const { currentClass, className, semesterText, totalStudents, localStudents, localGroups, loadClassInfo, loadLocalData } = useClassData()
@@ -528,39 +535,88 @@
 	}
 
 	// 更新兑换记录状态
-	const updateExchangeStatus = async (row : any[]|object) => {
+const updateExchangeStatus = async (row : any[]|object) => {
+	const items = Array.isArray(row) ? row : [row]
+	if (items.length === 0) return
+
+	const names = items.map((r: any) => r.reward_name).join('、')
+	try {
+		await ElMessageBox.confirm(`确定将“${names}”标记为已发放吗？`, '确认', { type: 'info' })
+	} catch {
+		return
+	}
+
+	let successCount = 0
+	let failCount = 0
+
+	for (const item of items) {
 		try {
-			await ElMessageBox.confirm(`确定将“${row.reward_name}”标记为已发放吗？`, '确认', { type: 'info' })
-		} catch {
+			const res = await updateStatus({ id: item.id, status: 1 })
+			if (res.code === 1) {
+				successCount++
+			} else {
+				failCount++
+				console.warn(`更新"${item.reward_name}"失败:`, res.msg)
+			}
+		} catch (e) {
+			failCount++
+			console.warn(`更新"${item.reward_name}"异常:`, e)
+		}
+	}
+
+	if (successCount > 0 && failCount === 0) {
+		ElMessage.success(`${successCount}个奖品已发放`)
+	} else if (successCount > 0 && failCount > 0) {
+		ElMessage.warning(`${successCount}个成功，${failCount}个失败`)
+	} else {
+		ElMessage.error('发放失败，请重试')
+	}
+
+	if (successCount > 0) {
+		await openExchangeRecordDialog()
+	}
+}
+
+	const formatType = (row : any) => getTypeName(row.reward_type)
+
+	const grantToGameBag = async (row: any) => {
+		const config = getGameConfigByType(row.reward_type)
+		if (!config) {
+			ElMessage.error('未知的游戏商品类型')
 			return
 		}
 		try {
-			if(row.length != null){
-				row.forEach(r=>{
-					const res = updateStatus({ id: r.id, status: 1 })
-					if (res.code === 1) {
-						openExchangeRecordDialog()
-					} else {
-						ElMessage.error(res.msg || '更新失败')
-					}
-				})
-				ElMessage.success('状态更新成功')
-				return
-			}
-			console.log(11111)
-			const res = await updateStatus({ id: row.id, status: 1 })
+			await ElMessageBox.confirm(
+				`确定将"${row.reward_name}"发放到 ${row.target_name} 的游戏背包吗？\n类型：${config.itemType === 'food' ? '食物' : '玩具'}`,
+				'发放到游戏背包',
+				{ type: 'info' }
+			)
+		} catch { return }
+
+		try {
+			const res = await batchGrantToGameBag({
+				class_id: currentClass.value?.id,
+				reward_id: row.reward_id,
+				game_id: config.gameId,
+				grants: [{
+					group_id: row.target_id,
+					item_type: config.itemType,
+					item_code: row.reward_name,
+					item_name: row.reward_name,
+					quantity: row.points || 1
+				}]
+			})
 			if (res.code === 1) {
-				ElMessage.success('状态更新成功')
+				await updateStatus({ id: row.id, status: 1 })
+				ElMessage.success('已发放到游戏背包')
 				await openExchangeRecordDialog()
 			} else {
-				ElMessage.error(res.msg || '更新失败')
+				ElMessage.error(res.msg || '发放失败')
 			}
 		} catch (error) {
 			ElMessage.error('网络错误')
 		}
 	}
-
-	const formatType = (row : any) => getTypeName(row.reward_type)
 
 	const onWeekChange = () => {
 		refreshData()
@@ -714,6 +770,18 @@
 
 	.reward-type {
 		margin-bottom: 8px;
+		display: flex;
+		gap: 4px;
+		justify-content: center;
+	}
+
+	.game-tag {
+		animation: gameTagPulse 2s ease-in-out infinite;
+	}
+
+	@keyframes gameTagPulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.7; }
 	}
 
 	.reward-points {

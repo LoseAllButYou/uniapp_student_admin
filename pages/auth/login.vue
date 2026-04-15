@@ -62,7 +62,9 @@ const handleLogin = async () => {
         localStorage.setItem('userInfo', JSON.stringify(result.data.userInfo))
         ElMessage.success('登录成功')
         // 跳转到主页面
-        router.push('/pages/index/index')
+        uni.redirectTo({
+        	url:'/pages/home/index'
+        })
       } else {
         ElMessage.error(result.msg || '登录失败')
       }
@@ -75,7 +77,9 @@ const handleLogin = async () => {
 }
 
 const goToRegister = () => {
-  router.push('/pages/auth/register ')
+   uni.redirectTo({
+          	url:'/pages/auth/register'
+          })
 }
 </script>
 

@@ -207,6 +207,15 @@ export const addStudentScore = (data: {
   return request({ url: '/stu/student/addStudentScore', method: 'POST', data })
 }
 
+// 批量伪删除积分记录
+export const batchDeleteScoreRecords = (data: { ids: number[] }) => {
+  return request({
+    url: '/stu/score/batchDeleteScoreRecords',
+    method: 'POST',
+    data
+  })
+}
+
 // 批量添加学生积分
 export const batchAddStudentScore = (data: { records: any[] }) => {
   return request({ url: '/stu/teacher/batchAddStudentScore', method: 'POST', data })
@@ -228,6 +237,10 @@ export const getScoreReasons = () => {
  */
 export const getAllClassScores = (params: { classId: number }) => {
   return request({ url: '/stu/teacher/getAllClassScores', method: 'POST', data: params })
+}
+
+export const getAllClassScoresList = (params: { classId: number }) => {
+  return request({ url: '/stu/score/list', method: 'POST', data: params })
 }
 
 /**
@@ -355,4 +368,54 @@ export const getPetBag = (classId: number, groupId: number) => {
 
 export const syncPetDecay = (classId: number, pets: Array<{pet_id: number; energy: number; mood: number}>) => {
   return request({ url: '/stu/gamePet/syncDecay', method: 'POST', data: { class_id: classId, pets } })
+}
+
+export const grantToGameBag = (data: { class_id: number; group_id: number; item_type: string; item_code: string; item_name: string; quantity: number }) => {
+  return request({ url: '/stu/gamePet/grantToBag', method: 'POST', data })
+}
+
+export const batchGrantToGameBag = (data: { class_id: number; grants: Array<{ group_id: number; item_type: string; item_code: string; item_name: string; quantity: number }> }) => {
+  return request({ url: '/stu/gamePet/batchGrantToBag', method: 'POST', data })
+}
+
+// ==================== 宠物游戏配置相关 API ====================
+
+export const getPetConfigs = (params: { class_id?: number; game_id?: number }) => {
+  return request({ url: '/stu/gamePet/getPetConfigs', method: 'GET', data: params })
+}
+
+export const getPetConfigDetail = (params: { pet_id: number }) => {
+  return request({ url: '/stu/gamePet/getPetConfigDetail', method: 'GET', data: params })
+}
+
+export const savePetConfig = (data: any) => {
+  return request({ url: '/stu/gamePet/savePetConfig', method: 'POST', data })
+}
+
+export const deletePetConfig = (data: { pet_id: number }) => {
+  return request({ url: '/stu/gamePet/deletePetConfig', method: 'POST', data })
+}
+
+export const getFoodConfigs = () => {
+  return request({ url: '/stu/gamePet/getFoodConfigs', method: 'GET' })
+}
+
+export const saveFoodConfig = (data: any) => {
+  return request({ url: '/stu/gamePet/saveFoodConfig', method: 'POST', data })
+}
+
+export const deleteFoodConfig = (data: { id: number }) => {
+  return request({ url: '/stu/gamePet/deleteFoodConfig', method: 'POST', data })
+}
+
+export const getToyConfigs = () => {
+  return request({ url: '/stu/gamePet/getToyConfigs', method: 'GET' })
+}
+
+export const saveToyConfig = (data: any) => {
+  return request({ url: '/stu/gamePet/saveToyConfig', method: 'POST', data })
+}
+
+export const deleteToyConfig = (data: { id: number }) => {
+  return request({ url: '/stu/gamePet/deleteToyConfig', method: 'POST', data })
 }

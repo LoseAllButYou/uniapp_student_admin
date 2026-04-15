@@ -1,11 +1,13 @@
 export const BUBBLE_EMOJIS = ['❤️','🐾','⭐','🎵','😊','💤','🍖','🎾','✨','🥰','💕','🌟']
 
 export const DECAY_CONFIG = {
-	energyDecayPerSec: 0.5,
-	moodDecayPerSec: 0.5,
-	decayCheckSec: 5,
-	syncToServerSec: 30,
+	energyDecaySecsPerPoint: 120,
+	moodDecaySecsPerPoint: 120,
+	decayCheckSec: 30,
+	syncToServerSec: 60,
 }
+
+export const IS_DEBUG = import.meta.env.DEV
 
 export const PET_TYPES = [
 	{ code: 'pig', name: '小猪' },
@@ -34,7 +36,7 @@ export function getProgressColor(v: number): string {
 }
 
 export function getStageScale(stage: number): number {
-	return [0.8, 1, 1.2, 1.4][Math.min(stage, 4) - 1] || 1
+	return Math.min(2, Math.pow(1.25, Math.min(stage, 4) - 1))
 }
 
 const PET_SVG_BASE = '/web/static/game/pet'
@@ -49,10 +51,10 @@ export function getEggImgSrc(): string {
 
 export function getPetImgHTML(type: string, stage: number): string {
 	const s = getStageScale(stage)
-	const w = 160 * s
-	return `<img src="${getPetImgSrc(type)}" width="${w}" height="${w}" style="image-rendering:auto;" />`
+	const w = Math.round(120 * s)
+	return `<img src="${getPetImgSrc(type)}" style="max-width:${w}px; height:auto; object-fit:contain; image-rendering:auto;" />`
 }
 
 export function getEggImgHTML(size: number = 70): string {
-	return `<img src="${getEggImgSrc()}" width="${size}" height="${Math.round(size * 1.37)}" style="image-rendering:auto;" />`
+	return `<img src="${getEggImgSrc()}" style="width:${size}px; height:auto; object-fit:contain; image-rendering:auto;" />`
 }
