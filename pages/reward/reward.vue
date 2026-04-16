@@ -160,7 +160,7 @@
 			<div style="margin-bottom: 10px;">
 				<el-button  type="warning" size="default"
 					@click="updateExchangeStatus(multipleSelection)">
-					一键选中操作
+					快捷发放选中记录
 				</el-button>
 			</div>
 			<el-table :data="exchangeRecordList" stripe v-loading="recordLoading" border @selection-change="handleSelectionChange"  height='75vh'>
@@ -525,7 +525,19 @@
 			grantLoading.value = false
 		}
 	}
-
+	
+	const getTargetName= ()=>{
+		console.log(localGroups.value,localStudents.value)
+		exchangeRecordList.value.forEach(item=>{
+			if(item.reward_type>2){
+				console.log(item)
+				item.target_name =localGroups.value.find(group=>group.id==item.target_id)?.name
+			}else{
+				item.target_name =localStudents.value.find(student=>student.id==item.target_id)?.name
+			}
+		})
+	}
+	
 	// 打开兑换记录管理
 	const openExchangeRecordDialog = async () => {
 		recordLoading.value = true
@@ -533,6 +545,7 @@
 			const res = await getExchangeList({ class_id: currentClass.value?.id })
 			if (res.code === 1) {
 				exchangeRecordList.value = res.data
+				getTargetName()
 				exchangeRecordDialog.value.visible = true
 			} else {
 				ElMessage.error(res.msg || '获取记录失败')
@@ -560,8 +573,15 @@ const updateExchangeStatus = async (row : any[]|object) => {
 	let failCount = 0
 
 	for (const item of items) {
+		
 		try {
-			const res = await updateStatus({ id: item.id, status: 1 })
+			let res =0
+			if(isGameRewardType(item.reward_type) && item.target_type === 'group'){
+				res = await grantToGameBag(item,false)
+			}
+			else{
+				res = await updateStatus({ id: item.id, status: 1 })
+			}	
 			if (res.code === 1) {
 				successCount++
 			} else {
@@ -589,13 +609,14 @@ const updateExchangeStatus = async (row : any[]|object) => {
 
 	const formatType = (row : any) => getTypeName(row.reward_type)
 
-	const grantToGameBag = async (row: any) => {
+	const grantToGameBag = async (row: any,tip:boolean = true) => {
 		const config = getGameConfigByType(row.reward_type)
 		if (!config) {
 			ElMessage.error('未知的游戏商品类型')
 			return
 		}
 		try {
+			if(tip)
 			await ElMessageBox.confirm(
 				`确定将"${row.reward_name}"发放到 ${row.target_name} 的游戏背包吗？\n类型：${config.itemType === 'food' ? '食物' : '玩具'}`,
 				'发放到游戏背包',
@@ -618,8 +639,12 @@ const updateExchangeStatus = async (row : any[]|object) => {
 			})
 			if (res.code === 1) {
 				await updateStatus({ id: row.id, status: 1 })
-				ElMessage.success('已发放到游戏背包')
-				await openExchangeRecordDialog()
+				if(tip){
+					ElMessage.success('已发放到游戏背包')
+					await openExchangeRecordDialog()
+				}else{
+					return res
+				}
 			} else {
 				ElMessage.error(res.msg || '发放失败')
 			}

@@ -4,11 +4,24 @@
 		<div v-if="isLoading" class="loading-wrapper">
 			<div class="loading-content">
 				<p class="loading-text">宠物乐园 正在加载中...</p>
-				<el-progress :percentage="loadingProgress" :stroke-width="15" :format="formatProgress" />
+				<el-progress :percentage="loadingProgress" :stroke-width="15" :format="formatProgress"  :text-inside="true" />
 			</div>
 		</div>
 
-		<el-dialog v-model="gameVisible" width="92%" top="2vh" :show-close="true" :close-on-click-modal="false" append-to-body class="game-big-dialog" @opened="onGameOpened" @close="onGameClose">
+		<el-dialog v-model="gameVisible" width="92%" top="2vh" :show-close="false" :close-on-click-modal="false" append-to-body class="game-big-dialog" @opened="onGameOpened" @close="onGameClose">
+			<template #header>
+				<div class="dialog-header-custom">
+					<span class="dialog-title">{{ className || '宠物乐园' }}</span>
+					<div class="dialog-header-actions">
+						<el-button size="small" @click="minimizeGame" :icon="Edit" type="primary">
+							最小化
+						</el-button>
+						<el-button size="small" @click="gameVisible=false" :icon="Close" type="danger">
+							关闭
+						</el-button>
+					</div>
+				</div>
+			</template>
 			<div class="game-main">
 				<div class="farm-scene" ref="farmRef">
 					<div class="farm-area">
@@ -118,6 +131,12 @@
 			</div>
 		</el-dialog>
 
+		<!-- 最小化后的悬浮球 -->
+		<div v-if="isMinimized" class="minimized-ball" @click="restoreGame">
+			<div class="ball-icon">🐾</div>
+			<div class="ball-label">宠物乐园</div>
+		</div>
+
 		<el-dialog v-model="adoptVisible" title="🐣 领养宠物" width="620px" append-to-body>
 			<div class="adopt-body">
 				<div class="adopt-info">为 <b>{{ adoptGroupName }}</b> 领养宠物</div>
@@ -183,7 +202,7 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, Minus } from '@element-plus/icons-vue'
 import { getPetTypes, getPetList } from '@/api/request'
 import { DECAY_CONFIG, IS_DEBUG, getProgressColor, getPetImgHTML, getEggImgHTML } from './petResources'
 import { Sprite } from './types'
@@ -200,6 +219,7 @@ const isLoading = ref(false)
 const loadingProgress = ref(0)
 const entering = ref(false)
 const gameVisible = ref(false)
+const isMinimized = ref(false)
 const loading = ref(false)
 const classId = ref(0)
 const className = ref('')
@@ -208,6 +228,7 @@ const petTypes = ref<any[]>([])
 const sprites = ref<Sprite[]>([])
 const selectedSprite = ref<Sprite | null>(null)
 const farmRef = ref<HTMLElement | null>(null)
+const gameInitialized = ref(false)
 const emit = defineEmits(['gameClose'])
 const eggSprites = computed(() => sprites.value.filter(s => !s.hasPet))
 const petSprites = computed(() => sprites.value.filter(s => s.hasPet))
@@ -278,6 +299,7 @@ const loadGameResources = async () => {
 }
 
 const openGame = async () => {
+	if (gameInitialized.value) return
 	console.log('xxxxxxxx')
 	entering.value = true
 	try {
@@ -303,9 +325,38 @@ const openGame = async () => {
 	finally { entering.value = false }
 }
 
-const onGameOpened = () => { startMoveLoop(); startDecayLoop(); startSyncLoop() }
-const onGameClose = () => { stopMoveLoop(); stopDecayLoop(); stopSyncLoop();emit('gameClose', '')  }
+const onGameOpened = () => { gameInitialized.value = true; startMoveLoop(); startDecayLoop(); startSyncLoop() }
+const onGameClose = () => { stopMoveLoop(); stopDecayLoop(); stopSyncLoop();
+	if(!isMinimized.value) emit('gameClose', ''); 
+	gameInitialized.value = false }
 
+const minimizeGame = () => {
+	isMinimized.value = true
+	gameVisible.value = false
+	stopMoveLoop()
+	stopDecayLoop()
+	stopSyncLoop()
+	uni.$emit('petGameMinimized', true)
+	console.log('xxxxxxxx')
+}
+
+const restoreGame = () => {
+	console.log('xxxxxxxx')
+
+	isMinimized.value = false
+	gameVisible.value = true
+	uni.$emit('petGameMinimized', false)
+	setTimeout(() => {
+		if (gameVisible.value) {
+			startMoveLoop()
+			startDecayLoop()
+			startSyncLoop()
+		}
+	}, 100)
+}
+defineExpose({
+	restoreGame,
+})
 watch(decayCheckSec, () => { if (gameVisible.value) startDecayLoop() })
 watch(syncToServerSec, () => { if (gameVisible.value) startSyncLoop() })
 
@@ -343,7 +394,40 @@ onUnmounted(() => { stopMoveLoop(); stopDecayLoop(); stopSyncLoop() })
 
 .game-big-dialog :deep(.el-dialog__body) { padding:0!important; overflow:hidden; }
 .game-big-dialog :deep(.el-dialog__header) { padding:8px 16px; }
+.dialog-header-custom { display:flex; align-items:center; justify-content:space-between; width:100%; }
+.dialog-title { font-size:16px; font-weight:600; color:#1e293b; }
+.dialog-header-actions { display:flex; gap:6px; }
 .game-main { width:100%; height:82vh; display:flex; }
+
+.minimized-ball {
+	position:fixed;
+	bottom:80px;
+	right:30px;
+	width:60px;
+	height:60px;
+	border-radius:50%;
+	background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+	box-shadow:0 4px 15px rgba(102,126,234,0.4);
+	display:flex;
+	flex-direction:column;
+	align-items:center;
+	justify-content:center;
+	cursor:pointer;
+	z-index:9999;
+	transition:all 0.3s;
+	animation:ballPulse 2s ease-in-out infinite;
+}
+.minimized-ball:hover {
+	transform:scale(1.1);
+	box-shadow:0 6px 20px rgba(102,126,234,0.6);
+}
+.ball-icon { font-size:22px; line-height:1; }
+.ball-label { font-size:8px; color:#fff; margin-top:2px; white-space:nowrap; }
+
+@keyframes ballPulse {
+	0%, 100% { box-shadow:0 4px 15px rgba(102,126,234,0.4); }
+	50% { box-shadow:0 4px 25px rgba(102,126,234,0.7); }
+}
 
 .farm-scene { flex:1; position:relative; overflow:hidden; }
 

@@ -61,6 +61,7 @@ export function useScoreCalculator() {
     for (const r of records) {
       if (studentMap.has(r.student_id)) {
         studentMap.get(r.student_id)!.total += r.score
+        studentMap.get(r.student_id)!.current = r.current_points
       } else {
         studentMap.set(r.student_id, {
           id: r.student_id,

@@ -13,6 +13,11 @@
 				<span class="logo-text">{{ isCollapse ? '' : '班级积分管理系统' }}</span>
 			</div>
 			<div class="header-right">
+				<el-button type="text" @click="restorePetGame" :class="{'pet-game-active': petGameMinimized}">
+					<el-icon>
+						<Promotion />
+					</el-icon> <span v-if="petGameMinimized">返回宠物乐园</span><span v-else>游戏</span>
+				</el-button>
 				<el-button type="text" @click="showTeacherInfo">
 					<el-icon>
 						<User />
@@ -78,8 +83,8 @@
 				<div v-else-if="activeMenu === 'student'">
 					<student></student>
 				</div>
-				<div v-else-if="activeMenu === 'game'">
-					<GameCenter></GameCenter>
+				<div v-show="activeMenu === 'game'">
+					<GameCenter @minimize="handlePetGameMinimize" ref="GameCenterRef"></GameCenter>
 				</div>
 			</el-main>
 		</el-container>
@@ -168,6 +173,7 @@
 	// 菜单状态
 	const activeMenu = ref('student')
 	const isCollapse = ref(false)
+	const petGameMinimized = ref(false)
 
 	// 用户信息（扩展班级列表、教师ID、学校ID）
 	const teacherInfo = ref({
@@ -219,6 +225,9 @@
 		},
 		{ immediate: true }
 	)
+
+	// 监听子组件最小化游戏
+	const GameCenterRef = ref<GameCenter>()
 
 	// 重置表单
 	const resetClassForm = () => {
@@ -445,7 +454,20 @@
 
 	// 菜单切换
 	const handleMenuSelect = (index : string) => {
-		activeMenu.value = index
+			activeMenu.value = index
+
+	}
+
+	const handlePetGameMinimize = () => {
+		petGameMinimized.value = true
+	}
+
+	const restorePetGame = () => {
+		petGameMinimized.value = false
+		activeMenu.value = 'game'
+
+		console.log(GameCenterRef.value.enterGame)
+		GameCenterRef.value?.enterGame('')
 	}
 
 	// 收缩/展开菜单
@@ -470,6 +492,17 @@
 
 	onMounted(() => {
 		fetchUserInfo()
+
+		// 监听宠物游戏最小化事件
+		uni.$on('petGameMinimized', (minimized: boolean) => {
+			if (minimized) {
+				petGameMinimized.value = true
+				activeMenu.value = 'student'
+			} else {
+				petGameMinimized.value = false
+				activeMenu.value = 'game'
+			}
+		})
 	})
 </script>
 

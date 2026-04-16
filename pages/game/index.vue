@@ -24,7 +24,7 @@
 		<div v-if="activeGame" class="game-content">
 			<el-card class="game-panel">
 				<!-- 游戏内容 -->
-				<PetGame v-if="currentGameId === 1" @gameClose="handleGameClose" />
+				<PetGame v-if="currentGameId === 1" @gameClose="handleGameClose" @minimize="handleMinimize" ref="petGameRef" />
 				<TreeGame v-else-if="currentGameId === 2" />
 			</el-card>
 		</div>
@@ -48,12 +48,22 @@ const activeGame = ref('')
 const configDialogVisible = ref(false)
 const configGameKey = ref('')
 const currentGameId = ref(0)
+const loadingGame = ref('')
+const petGameRef = ref<PetGame>()
 
 // 监听子组件关闭游戏
 const handleGameClose = () => {
 	console.log('game close')
     currentGameId.value = 0
     activeGame.value = ''
+}
+
+// 监听子组件最小化游戏
+const handleMinimize = (minimized: boolean) => {
+	console.log('game handleMinimize', minimized)	
+
+	// activeGame.value = ''
+	// currentGameId.value = 0
 }
 
 const gameList = [
@@ -74,13 +84,17 @@ const configGameName = computed(() => {
 
 
 const enterGame = (key: string) => {
+	console.log(activeGame.value)
+	if(key === '') petGameRef.value?.restoreGame()
 	const game = gameList.find(g => g.key === key)
 	if (!game) return
 	
 	activeGame.value = key
 	currentGameId.value = game.id
 }
-
+defineExpose({
+	enterGame,
+})
 const openGameConfig = (key: string) => {
 	configGameKey.value = key
 	configDialogVisible.value = true

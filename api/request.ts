@@ -260,16 +260,6 @@ export const getRewardList = (params: { class_id: number }) => {
   return request({ url: '/stu/reward/list', method: 'GET', data: params })
 }
 
-// 兑换奖品
-export const exchangeReward = (data: {
-  reward_id: number
-  target_id: number      // 学生ID或小组ID
-  target_type: string    // 'student' 或 'group'
-  week?: number          // 周奖时需要
-}) => {
-  return request({ url: '/stu/reward/exchange', method: 'POST', data })
-}
-
 // 获取我的兑换记录
 export const getMyExchanges = (params: { student_id: number }) => {
   return request({ url: '/stu/reward/myExchanges', method: 'GET', data: params })
