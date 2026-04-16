@@ -1,18 +1,10 @@
 <template>
 	<div class="pet-game-container">
-		<div class="game-entry" @click="openGame">
-			<div class="entry-bg"></div>
-			<div class="entry-content">
-				<div class="entry-pets">
-					<span class="float-pet" style="animation-delay:0s">🐷</span>
-					<span class="float-pet" style="animation-delay:0.5s">🐶</span>
-					<span class="float-pet" style="animation-delay:1s">🐱</span>
-					<span class="float-pet" style="animation-delay:1.5s">🐰</span>
-					<span class="float-pet" style="animation-delay:2s">🐼</span>
-				</div>
-				<h1 class="entry-title">小组宠物乐园</h1>
-				<p class="entry-desc">和小组同学一起养育专属宠物吧！</p>
-				<el-button type="primary" size="large" round class="entry-btn" :loading="entering">进入游戏</el-button>
+		<!-- 游戏加载进度条 -->
+		<div v-if="isLoading" class="loading-wrapper">
+			<div class="loading-content">
+				<p class="loading-text">宠物乐园 正在加载中...</p>
+				<el-progress :percentage="loadingProgress" :stroke-width="15" :format="formatProgress" />
 			</div>
 		</div>
 
@@ -189,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, computed, onUnmounted, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { getPetTypes, getPetList } from '@/api/request'
@@ -204,6 +196,8 @@ const moodDecaySecsPerPoint = ref(DECAY_CONFIG.moodDecaySecsPerPoint)
 const decayCheckSec = ref(DECAY_CONFIG.decayCheckSec)
 const syncToServerSec = ref(DECAY_CONFIG.syncToServerSec)
 
+const isLoading = ref(false)
+const loadingProgress = ref(0)
 const entering = ref(false)
 const gameVisible = ref(false)
 const loading = ref(false)
@@ -214,7 +208,7 @@ const petTypes = ref<any[]>([])
 const sprites = ref<Sprite[]>([])
 const selectedSprite = ref<Sprite | null>(null)
 const farmRef = ref<HTMLElement | null>(null)
-
+const emit = defineEmits(['gameClose'])
 const eggSprites = computed(() => sprites.value.filter(s => !s.hasPet))
 const petSprites = computed(() => sprites.value.filter(s => s.hasPet))
 
@@ -245,7 +239,46 @@ const {
 	openFeed, doFeed, openInteract, doInteract
 } = useGameActions(sprites, selectedSprite, classId, pets, petTypes, loading, buildSprites)
 
+const formatProgress = (percentage: number) => {
+	return `${percentage}%`
+}
+
+const loadGameResources = async () => {
+	isLoading.value = true
+	loadingProgress.value = 0
+
+	const startTime = Date.now()
+	const minLoadingTime = 1000 // 最小加载时间 1 秒
+
+	// 模拟加载资源
+	const resources = ['宠物数据', '游戏资源', '场景加载']
+	for (let i = 0; i < resources.length; i++) {
+		const progress = (i + 1) / resources.length * 100
+		await new Promise(resolve => {
+			setTimeout(() => {
+				loadingProgress.value = Math.round(progress)
+				resolve(undefined)
+			}, 300)
+		})
+	}
+
+	// 确保最小加载时间
+	const elapsedTime = Date.now() - startTime
+	if (elapsedTime < minLoadingTime) {
+		await new Promise(resolve => {
+			setTimeout(resolve, minLoadingTime - elapsedTime)
+		})
+	}
+
+	// 完成加载
+	loadingProgress.value = 100
+	await new Promise(resolve => setTimeout(resolve, 300))
+	
+	isLoading.value = false
+}
+
 const openGame = async () => {
+	console.log('xxxxxxxx')
 	entering.value = true
 	try {
 		const cid = uni.getStorageSync('currentClassId')
@@ -253,25 +286,50 @@ const openGame = async () => {
 		classId.value = cid
 		const info = uni.getStorageSync('teacherInfo')
 		className.value = info?.classes?.find((c: any) => c.id === cid)?.name || ''
+		
+		// 先加载游戏资源
+		await loadGameResources()
+		
+		// 加载完成后获取数据
 		const [tRes, pRes] = await Promise.all([getPetTypes(), getPetList(cid)])
 		if (tRes.code === 1) petTypes.value = tRes.data
 		if (pRes.code === 1) { pets.value = pRes.data; buildSprites() }
 		gameVisible.value = true
-	} catch (e) { console.error(e); ElMessage.error('进入游戏失败') }
+	} catch (e) { 
+		console.error(e)
+		ElMessage.error('进入游戏失败')
+		isLoading.value = false
+	}
 	finally { entering.value = false }
 }
 
 const onGameOpened = () => { startMoveLoop(); startDecayLoop(); startSyncLoop() }
-const onGameClose = () => { stopMoveLoop(); stopDecayLoop(); stopSyncLoop() }
+const onGameClose = () => { stopMoveLoop(); stopDecayLoop(); stopSyncLoop();emit('gameClose', '')  }
 
 watch(decayCheckSec, () => { if (gameVisible.value) startDecayLoop() })
 watch(syncToServerSec, () => { if (gameVisible.value) startSyncLoop() })
 
+onMounted (()=>{openGame()})
 onUnmounted(() => { stopMoveLoop(); stopDecayLoop(); stopSyncLoop() })
 </script>
 
 <style scoped>
 .pet-game-container { width:100%; height:100%; }
+
+.loading-wrapper {
+	width:100%; height:100%;
+	display:flex; align-items:center; justify-content:center;
+	background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+	border-radius:8px;
+}
+
+.loading-content {
+	width:100%; max-width:400px; padding:40px;
+}
+
+.loading-text {
+	text-align:center; color:#fff; font-size:16px; margin-bottom:20px;
+}
 
 .game-entry { width:100%; height:100%; position:relative; overflow:hidden; border-radius:8px; cursor:pointer; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); }
 .entry-bg { position:absolute; inset:0; background:radial-gradient(circle at 30% 70%,rgba(255,255,255,0.1) 0%,transparent 50%); }

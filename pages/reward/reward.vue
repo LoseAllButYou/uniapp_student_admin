@@ -31,12 +31,17 @@
 			<el-card v-for="item in rewardList" :key="item.id" class="reward-item" shadow="hover">
 				<img :src="item.image || defaultImage" class="reward-image" @error="handleImageError" />
 				<div class="reward-name">{{ item.name }}</div>
-				<div class="reward-type">
-					<el-tag :type="getTypeTagType(item.type)" size="small">{{ getTypeName(item.type) }}</el-tag>
-					<el-tag v-if="isGameRewardType(item.type)" type="danger" size="small" effect="dark" class="game-tag">🎮 游戏</el-tag>
+				<div class="reward-meta">
+					<div class="reward-type">
+						<el-tag :type="getTypeTagType(item.type)" size="small">{{ getTypeName(item.type) }}</el-tag>
+						<el-tag v-if="isGameRewardType(item.type)" type="danger" size="small" effect="dark" class="game-tag">🎮 {{ getGameName(item.game_id) }}</el-tag>
+					</div>
+					<div class="reward-info">
+						<span class="reward-points">{{ item.points }} 积分</span>
+						<span class="reward-stock">库存：{{ item.stock }}</span>
+					</div>
 				</div>
-				<div class="reward-points">{{ item.points }} 积分</div>
-				<div class="reward-stock">库存：{{ item.stock }}</div>
+				<div class="reward-description">{{ item.description || '暂无商品详情' }}</div>
 
 				<el-button v-if="item.type === 1 || item.type === 2" type="primary" size="small"
 					@click="openExchangeDialog(item)">
@@ -279,6 +284,11 @@
 	const getTypeName = (type : number) => {
 		const map : Record<number, string> = { 1: '学生奖励', 2: '学生周奖', 3: '小组奖励', 4: '小组周奖' }
 		return map[type] || '未知'
+	}
+
+	const getGameName = (gameId : number) => {
+		const gameMap : Record<number, string> = { 1: '宠物乐园', 2: '种树游戏' }
+		return gameMap[gameId] || '未知游戏'
 	}
 
 	const getTypeTagType = (type : number) => {
@@ -763,38 +773,61 @@ const updateExchangeStatus = async (row : any[]|object) => {
 	}
 
 	.reward-name {
-		font-weight: bold;
-		font-size: 1.1rem;
-		margin: 12px 0 6px;
-	}
+			font-weight: bold;
+			font-size: 1.1rem;
+			margin: 12px 0 6px;
+			word-break: break-word;
+		}
 
-	.reward-type {
-		margin-bottom: 8px;
-		display: flex;
-		gap: 4px;
-		justify-content: center;
-	}
+		.reward-meta {
+			margin-bottom: 8px;
+		}
 
-	.game-tag {
-		animation: gameTagPulse 2s ease-in-out infinite;
-	}
+		.reward-type {
+			display: flex;
+			gap: 4px;
+			justify-content: center;
+			flex-wrap: wrap;
+			margin-bottom: 4px;
+		}
 
-	@keyframes gameTagPulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.7; }
-	}
+		.reward-info {
+			display: flex;
+			gap: 16px;
+			justify-content: center;
+			flex-wrap: wrap;
+			align-items: center;
+		}
 
-	.reward-points {
-		color: #f59e0b;
-		font-weight: 600;
-		margin-bottom: 4px;
-	}
+		.reward-points {
+			color: #f59e0b;
+			font-weight: 600;
+		}
 
-	.reward-stock {
-		font-size: 12px;
-		color: #909399;
-		margin-bottom: 12px;
-	}
+		.reward-stock {
+			font-size: 12px;
+			color: #909399;
+		}
+
+		.reward-description {
+			font-size: 12px;
+			color: #64748b;
+			line-height: 1.4;
+			margin: 8px 0 12px;
+			text-align: left;
+			padding: 8px;
+			background: #f8f9fa;
+			border-radius: 6px;
+			word-break: break-word;
+		}
+
+		.reward-description:empty {
+			display: none;
+		}
+
+		.game-tag {
+			animation: gameTagPulse 2s ease-in-out infinite;
+		}
 
 	.exchange-dialog-content,
 	.grant-dialog-content {

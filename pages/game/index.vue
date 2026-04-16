@@ -11,7 +11,7 @@
 				<div class="game-card-name">{{ game.name }}</div>
 				<div class="game-card-desc">{{ game.desc }}</div>
 				<div class="game-card-actions">
-					<el-button type="primary" @click="enterGame(game.key)">
+					<el-button type="primary" @click="enterGame(game.key)" :loading="loadingGame === game.key">
 						进入游戏
 					</el-button>
 					<el-button @click="openGameConfig(game.key)">
@@ -23,12 +23,9 @@
 
 		<div v-if="activeGame" class="game-content">
 			<el-card class="game-panel">
-				<div class="game-panel-header">
-					<span class="game-panel-title">{{ currentGameName }}</span>
-					<el-button size="small" @click="activeGame = ''">返回游戏库</el-button>
-				</div>
-				<PetGame v-if="activeGame === 'pet'" />
-				<TreeGame v-else-if="activeGame === 'tree'" />
+				<!-- 游戏内容 -->
+				<PetGame v-if="currentGameId === 1" @gameClose="handleGameClose" />
+				<TreeGame v-else-if="currentGameId === 2" />
 			</el-card>
 		</div>
 
@@ -50,10 +47,18 @@ import PetGameConfig from './petgame/PetGameConfig.vue'
 const activeGame = ref('')
 const configDialogVisible = ref(false)
 const configGameKey = ref('')
+const currentGameId = ref(0)
+
+// 监听子组件关闭游戏
+const handleGameClose = () => {
+	console.log('game close')
+    currentGameId.value = 0
+    activeGame.value = ''
+}
 
 const gameList = [
-	{ key: 'pet', name: '宠物小游戏', icon: '🐾', desc: '领养宠物，喂养互动，陪伴成长' },
-	{ key: 'tree', name: '班级树', icon: '🌳', desc: '共同浇灌，见证班级成长' },
+	{ key: 'pet', id: 1, name: '宠物乐园', icon: '🐾', desc: '领养宠物，喂养互动，陪伴成长' },
+	{ key: 'tree', id: 2, name: '班级树', icon: '🌳', desc: '共同浇灌，见证班级成长' },
 ]
 
 const currentGameName = computed(() => {
@@ -66,8 +71,14 @@ const configGameName = computed(() => {
 	return g ? g.name : ''
 })
 
+
+
 const enterGame = (key: string) => {
+	const game = gameList.find(g => g.key === key)
+	if (!game) return
+	
 	activeGame.value = key
+	currentGameId.value = game.id
 }
 
 const openGameConfig = (key: string) => {
@@ -174,8 +185,10 @@ const openGameConfig = (key: string) => {
 }
 
 .game-panel-title {
-	font-size: 16px;
-	font-weight: 600;
-	color: #303133;
-}
+			font-size: 16px;
+			font-weight: 600;
+			color: #303133;
+		}
+
+
 </style>

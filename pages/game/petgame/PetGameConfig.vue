@@ -1,6 +1,6 @@
 <template>
 	<div class="pet-game-config">
-		<el-tabs v-model="activeTab" type="card">
+		<el-tabs v-model="activeTab" type="card" @tab-click="handleTabChange">
 			<!-- 宠物配置 -->
 			<el-tab-pane label="宠物配置" name="pets">
 				<div class="tab-header">
@@ -288,42 +288,45 @@ const openPetDialog = (pet?: any) => {
 }
 
 const submitPetForm = async () => {
-	if (!petFormRef.value) return
-	await (petFormRef.value as any).validate()
-	petSubmitLoading.value = true
-	try {
-		const res = await savePetConfig(petForm.value)
-		if (res.code === 1) {
-			ElMessage.success('保存成功')
-			petDialogVisible.value = false
-			await fetchPets()
-		} else {
-			ElMessage.error(res.msg || '保存失败')
+		if (!petFormRef.value) return
+		const validateResult = await (petFormRef.value as any).validate().catch(() => false)
+		if (!validateResult) return
+		petSubmitLoading.value = true
+		try {
+			const res = await savePetConfig(petForm.value)
+			if (res && res.code === 1) {
+				ElMessage.success('保存成功')
+				petDialogVisible.value = false
+				await fetchPets()
+			} else {
+				ElMessage.error(res?.msg || '保存失败')
+			}
+		} catch (error) {
+			ElMessage.error('网络错误，请检查网络连接')
+			console.error('保存宠物配置失败:', error)
+		} finally {
+			petSubmitLoading.value = false
 		}
-	} catch (error) {
-		ElMessage.error('网络错误')
-	} finally {
-		petSubmitLoading.value = false
 	}
-}
 
 const handleDeletePet = (pet: any) => {
-	ElMessageBox.confirm(`确定删除宠物"${pet.pet_name}"吗？`, '提示', { type: 'warning' })
-		.then(async () => {
-			try {
-				const res = await deletePetConfig({ pet_id: pet.pet_id })
-				if (res.code === 1) {
-					ElMessage.success('删除成功')
-					await fetchPets()
-				} else {
-					ElMessage.error(res.msg || '删除失败')
+		ElMessageBox.confirm(`确定删除宠物"${pet.pet_name}"吗？`, '提示', { type: 'warning' })
+			.then(async () => {
+				try {
+					const res = await deletePetConfig({ pet_id: pet.pet_id })
+					if (res && res.code === 1) {
+						ElMessage.success('删除成功')
+						await fetchPets()
+					} else {
+						ElMessage.error(res?.msg || '删除失败')
+					}
+				} catch (error) {
+					ElMessage.error('网络错误，请检查网络连接')
+					console.error('删除宠物失败:', error)
 				}
-			} catch (error) {
-				ElMessage.error('网络错误')
-			}
-		})
-		.catch(() => {})
-}
+			})
+			.catch(() => {})
+	}
 
 // ==================== 食品配置 ====================
 const foodsList = ref<any[]>([])
@@ -389,38 +392,41 @@ const openFoodDialog = (food?: any) => {
 }
 
 const submitFoodForm = async () => {
-	if (!foodFormRef.value) return
-	await (foodFormRef.value as any).validate()
-	foodSubmitLoading.value = true
-	try {
-		const res = await saveFoodConfig(foodForm.value)
-		if (res.code === 1) {
-			ElMessage.success('保存成功')
-			foodDialogVisible.value = false
-			await fetchFoods()
-		} else {
-			ElMessage.error(res.msg || '保存失败')
+		if (!foodFormRef.value) return
+		const validateResult = await (foodFormRef.value as any).validate().catch(() => false)
+		if (!validateResult) return
+		foodSubmitLoading.value = true
+		try {
+			const res = await saveFoodConfig(foodForm.value)
+			if (res && res.code === 1) {
+				ElMessage.success('保存成功')
+				foodDialogVisible.value = false
+				await fetchFoods()
+			} else {
+				ElMessage.error(res?.msg || '保存失败')
+			}
+		} catch (error) {
+			ElMessage.error('网络错误，请检查网络连接')
+			console.error('保存食品配置失败:', error)
+		} finally {
+			foodSubmitLoading.value = false
 		}
-	} catch (error) {
-		ElMessage.error('网络错误')
-	} finally {
-		foodSubmitLoading.value = false
 	}
-}
 
 const handleDeleteFood = (food: any) => {
 	ElMessageBox.confirm(`确定删除食品"${food.food_name}"吗？`, '提示', { type: 'warning' })
 		.then(async () => {
 			try {
 				const res = await deleteFoodConfig({ id: food.id })
-				if (res.code === 1) {
+				if (res && res.code === 1) {
 					ElMessage.success('删除成功')
 					await fetchFoods()
 				} else {
-					ElMessage.error(res.msg || '删除失败')
+					ElMessage.error(res?.msg || '删除失败')
 				}
 			} catch (error) {
-				ElMessage.error('网络错误')
+				ElMessage.error('网络错误，请检查网络连接')
+				console.error('删除食品失败:', error)
 			}
 		})
 		.catch(() => {})
@@ -490,38 +496,41 @@ const openToyDialog = (toy?: any) => {
 }
 
 const submitToyForm = async () => {
-	if (!toyFormRef.value) return
-	await (toyFormRef.value as any).validate()
-	toySubmitLoading.value = true
-	try {
-		const res = await saveToyConfig(toyForm.value)
-		if (res.code === 1) {
-			ElMessage.success('保存成功')
-			toyDialogVisible.value = false
-			await fetchToys()
-		} else {
-			ElMessage.error(res.msg || '保存失败')
+		if (!toyFormRef.value) return
+		const validateResult = await (toyFormRef.value as any).validate().catch(() => false)
+		if (!validateResult) return
+		toySubmitLoading.value = true
+		try {
+			const res = await saveToyConfig(toyForm.value)
+			if (res && res.code === 1) {
+				ElMessage.success('保存成功')
+				toyDialogVisible.value = false
+				await fetchToys()
+			} else {
+				ElMessage.error(res?.msg || '保存失败')
+			}
+		} catch (error) {
+			ElMessage.error('网络错误，请检查网络连接')
+			console.error('保存玩具配置失败:', error)
+		} finally {
+			toySubmitLoading.value = false
 		}
-	} catch (error) {
-		ElMessage.error('网络错误')
-	} finally {
-		toySubmitLoading.value = false
 	}
-}
 
 const handleDeleteToy = (toy: any) => {
 	ElMessageBox.confirm(`确定删除玩具"${toy.toy_name}"吗？`, '提示', { type: 'warning' })
 		.then(async () => {
 			try {
 				const res = await deleteToyConfig({ id: toy.id })
-				if (res.code === 1) {
+				if (res && res.code === 1) {
 					ElMessage.success('删除成功')
 					await fetchToys()
 				} else {
-					ElMessage.error(res.msg || '删除失败')
+					ElMessage.error(res?.msg || '删除失败')
 				}
 			} catch (error) {
-				ElMessage.error('网络错误')
+				ElMessage.error('网络错误，请检查网络连接')
+				console.error('删除玩具失败:', error)
 			}
 		})
 		.catch(() => {})
@@ -533,6 +542,19 @@ onMounted(async () => {
 	await fetchFoods()
 	await fetchToys()
 })
+
+// 监听标签页切换，重新获取数据
+const handleTabChange = async (tab: any) => {
+	const tabName = tab.props.name || tab.name
+	activeTab.value = tabName
+	if (tabName === 'pets') {
+		await fetchPets()
+	} else if (tabName === 'foods') {
+		await fetchFoods()
+	} else if (tabName === 'toys') {
+		await fetchToys()
+	}
+}
 </script>
 
 <style scoped>
