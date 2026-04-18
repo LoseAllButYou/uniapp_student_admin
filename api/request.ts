@@ -344,6 +344,10 @@ export const interactPet = (data: { pet_id: number; toy_code: string; class_id: 
   return request({ url: '/stu/gamePet/interact', method: 'POST', data })
 }
 
+export const batchFeedInteract = (data: { class_id: number; actions: Array<{ pet_id: number; type: string; item_code: string; group_id: number }> }) => {
+  return request({ url: '/stu/gamePet/batchFeedInteract', method: 'POST', data })
+}
+
 export const getPetFoodList = () => {
   return request({ url: '/stu/gamePet/getFoodList', method: 'GET' })
 }
@@ -408,4 +412,58 @@ export const saveToyConfig = (data: any) => {
 
 export const deleteToyConfig = (data: { id: number }) => {
   return request({ url: '/stu/gamePet/deleteToyConfig', method: 'POST', data })
+}
+
+// ==================== 植树游戏相关 API ====================
+
+export const getTreeConfigs = (params: { game_id?: number }) => {
+  return request({ url: '/stu/treeGame/getTreeConfigs', method: 'GET', data: params })
+}
+
+export const getTreeList = (classId: number) => {
+  return request({ url: `/stu/treeGame/getTreeList?class_id=${classId}`, method: 'GET' })
+}
+
+export const plantTree = (data: { class_id: number; tree_type: string; pos_x: number; pos_y: number }) => {
+  return request({ url: '/stu/treeGame/plantTree', method: 'POST', data })
+}
+
+export const waterTree = (data: { tree_id: number; class_id: number }) => {
+  return request({ url: '/stu/treeGame/waterTree', method: 'POST', data })
+}
+
+export const fertilizeTree = (data: { tree_id: number; fertilizer_code: string; class_id: number; group_id: number }) => {
+  return request({ url: '/stu/treeGame/fertilizeTree', method: 'POST', data })
+}
+
+export const batchFertilize = (data: { tree_id: number; class_id: number; group_id: number }) => {
+  return request({ url: '/stu/treeGame/batchFertilize', method: 'POST', data })
+}
+
+export const getTreeBag = (classId: number, groupId: number) => {
+  return request({ url: `/stu/treeGame/getBag?class_id=${classId}&group_id=${groupId}`, method: 'GET' })
+}
+
+export const getFertilizerList = () => {
+  return request({ url: '/stu/treeGame/getFertilizerList', method: 'GET' })
+}
+
+export const getTreeBanners = (treeId: number) => {
+  return request({ url: `/stu/treeGame/getTreeBanners?tree_id=${treeId}`, method: 'GET' })
+}
+
+export const addBanner = (data: { tree_id: number; class_id: number; group_id: number; content: string; color?: string; banner_type?: string }) => {
+  return request({ url: '/stu/treeGame/addBanner', method: 'POST', data })
+}
+
+export const getBannerTemplates = () => {
+  return request({ url: '/stu/treeGame/getBannerTemplates', method: 'GET' })
+}
+
+export const grantToTreeBag = (data: { class_id: number; group_id: number; item_type: string; item_code: string; item_name: string; quantity: number }) => {
+  return request({ url: '/stu/treeGame/grantToBag', method: 'POST', data })
+}
+
+export const batchGrantToTreeBag = (data: { class_id: number; grants: Array<{ group_id: number; item_type: string; item_code: string; item_name: string; quantity: number }> }) => {
+  return request({ url: '/stu/treeGame/batchGrantToBag', method: 'POST', data })
 }

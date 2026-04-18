@@ -25,7 +25,7 @@
 			<el-card class="game-panel">
 				<!-- 游戏内容 -->
 				<PetGame v-if="currentGameId === 1" @gameClose="handleGameClose" @minimize="handleMinimize" ref="petGameRef" />
-				<TreeGame v-else-if="currentGameId === 2" />
+				<TreeGame v-else-if="currentGameId === 2" @gameClose="handleGameClose" @minimize="handleMinimize" ref="treeGameRef" />
 			</el-card>
 		</div>
 
@@ -41,7 +41,7 @@
 import { ref, computed } from 'vue'
 import { Setting } from '@element-plus/icons-vue'
 import PetGame from './petgame/PetGame.vue'
-import TreeGame from './TreeGame.vue'
+import TreeGame from './treegame/TreeGame.vue'
 import PetGameConfig from './petgame/PetGameConfig.vue'
 
 const activeGame = ref('')
@@ -50,6 +50,7 @@ const configGameKey = ref('')
 const currentGameId = ref(0)
 const loadingGame = ref('')
 const petGameRef = ref<PetGame>()
+const treeGameRef = ref<TreeGame>()
 
 // 监听子组件关闭游戏
 const handleGameClose = () => {
@@ -85,12 +86,18 @@ const configGameName = computed(() => {
 
 const enterGame = (key: string) => {
 	console.log(activeGame.value)
-	if(key === '') petGameRef.value?.restoreGame()
+	if(key === 'pet') petGameRef.value?.restoreGame()
+	if(key === 'tree') treeGameRef.value?.restoreGame()
 	const game = gameList.find(g => g.key === key)
 	if (!game) return
 	
 	activeGame.value = key
 	currentGameId.value = game.id
+	
+	setTimeout(() => {
+		if (key === 'pet') petGameRef.value?.enterGame()
+		if (key === 'tree') treeGameRef.value?.enterGame()
+	}, 100)
 }
 defineExpose({
 	enterGame,

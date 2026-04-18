@@ -166,6 +166,7 @@
 			<el-table :data="exchangeRecordList" stripe v-loading="recordLoading" border @selection-change="handleSelectionChange"  height='75vh'>
 				<el-table-column type="selection" width="55" :selectable="selectable"/>
 				<el-table-column prop="reward_name" label="奖品名称" width="150" />
+				<el-table-column prop="code" label="商品编码" width="130" />
 				<el-table-column prop="reward_type" label="奖品类型" width="120" :formatter="formatType" />
 				<el-table-column prop="target_type" label="对象类型" width="100">
 					<template #default="{ row }">
@@ -448,7 +449,9 @@
 				class_id:currentClass.value.id,
 				target_type: 'student',
 				week: reward.type === 2 ? exchangeWeek.value : null,
-				points: reward.points
+				points: reward.points,
+				code: reward.code || '',
+				num: 1
 			}))
 
 			const res = await batchExchange({ exchanges })
@@ -468,6 +471,7 @@
 
 	// 打开发放弹窗（类型3、4）
 	const openGrantDialog = async (reward : any) => {
+		console.log(reward)
 		if (reward.stock <= 0) {
 			ElMessage.warning('该奖品库存不足')
 			return
@@ -508,7 +512,8 @@
 				class_id:currentClass.value.id,
 				quantity: getGrantQuantity(idx),
 				week: reward.type === 4 ? grantWeek.value : null,
-				points: reward.points
+				points: reward.points,
+				code: reward.code || ''
 			}))
 
 			const res = await batchGrantGroup({ grants })
@@ -632,9 +637,9 @@ const updateExchangeStatus = async (row : any[]|object) => {
 				grants: [{
 					group_id: row.target_id,
 					item_type: config.itemType,
-					item_code: row.reward_name,
+					item_code: row.code || row.reward_name,
 					item_name: row.reward_name,
-					quantity: row.points || 1
+					quantity: row.num || row.points || 1
 				}]
 			})
 			if (res.code === 1) {

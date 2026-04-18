@@ -138,7 +138,7 @@
 			const currentClassId = await uni.getStorageSync('currentClassId')
 			if (classes.length && currentClassId) {
 				currentClass.value = classes.find((c : any) => c.id == currentClassId)
-				selectedGrade.value = currentClass.value?.grade || ''
+				selectedGrade.value = String(currentClass.value?.grade || '')
 				const month = new Date().getMonth() + 1
 				selectedSemester.value = month >= 3 && month <= 8 ? 2 : 1
 				selectedWeek.value = 1 // 默认第一周，实际可按需计算

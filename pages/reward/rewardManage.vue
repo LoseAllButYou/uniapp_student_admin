@@ -24,6 +24,10 @@
 				</div>
 				<div class="reward-info">
 					<div class="reward-name">{{ item.name }}</div>
+					<div class="reward-code" v-if="item.code">
+						<span class="code-label">编码：</span>
+						<span class="code-value">{{ item.code }}</span>
+					</div>
 					<div class="reward-attrs">
 						<el-tag size="small" effect="plain">
 							{{ item.points }} 积分
@@ -69,8 +73,15 @@
 					</el-select>
 				</el-form-item>
 				<el-form-item label="奖品名称" prop="name">
-					<el-input v-model="form.name" placeholder="请输入奖品名称" />
-				</el-form-item>
+				<el-input v-model="form.name" placeholder="请输入奖品名称" />
+			</el-form-item>
+			<el-form-item label="商品编码" prop="code">
+				<el-input v-model="form.code" placeholder="商品编码" :disabled="!!form.id">
+					<template #append v-if="!form.id">
+						<el-button @click="generateCode">生成</el-button>
+					</template>
+				</el-input>
+			</el-form-item>
 				<el-form-item label="所需积分" prop="points">
 					<el-input-number v-model="form.points" :min="1" :max="99999" placeholder="所需积分" style="width: 100%" />
 				</el-form-item>
@@ -166,6 +177,11 @@
 					<el-form-item label="已选商品">
 						<span>{{ selectedGameItems.length }} 件</span>
 					</el-form-item>
+					<el-form-item label="商品编码">
+						<el-tag type="info" v-for="item in selectedGameItemsDetail" :key="item.id" style="margin:2px">
+							{{ item.code }}
+						</el-tag>
+					</el-form-item>
 					<el-form-item label="默认积分" prop="points">
 						<el-input-number v-model="importForm.points" :min="1" :max="9999" style="width:200px" />
 					</el-form-item>
@@ -220,6 +236,7 @@
 		type: 1,
 		game_id: 1,
 		name: '',
+		code: '',
 		points: 10,
 		stock: 999,
 		image: '',
@@ -253,6 +270,15 @@
 		return map[gameId] || '未知游戏'
 	}
 
+	const generateCode = () => {
+		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+		let code = ''
+		for (let i = 0; i < 12; i++) {
+			code += chars.charAt(Math.floor(Math.random() * chars.length))
+		}
+		form.value.code = code
+	}
+
 	const handleImageError = (e: Event) => {
 		(e.target as HTMLImageElement).src = defaultImage
 	}
@@ -284,6 +310,7 @@ const openEditDialog = (item: any) => {
 		type: item.type,
 		game_id: item.game_id || (isGameType.value ? 1 : 0),
 		name: item.name,
+		code: item.code || '',
 		points: item.points,
 		stock: item.stock,
 		image: item.image || '',
@@ -294,12 +321,18 @@ const openEditDialog = (item: any) => {
 }
 
 const resetForm = () => {
+	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+	let code = ''
+	for (let i = 0; i < 12; i++) {
+		code += chars.charAt(Math.floor(Math.random() * chars.length))
+	}
 	form.value = {
 		id: null,
 		stu_class_id: currentClass.value?.id,
 		type: 1,
 		game_id: 1,
 		name: '',
+		code: code,
 		points: 10,
 		stock: 999,
 		image: '',
@@ -409,6 +442,7 @@ const isGameType = computed(() => {
 			.map(item => ({
 				id: item.id,
 				name: cfg.itemType === 'food' ? item.food_name : item.toy_name,
+				code: cfg.itemType === 'food' ? item.food_code : item.toy_code,
 				description: `${cfg.effectLabel}+${cfg.itemType === 'food' ? item.energy_add : item.mood_add} | 稀有度:${item.rarity || '普通'}`,
 			}))
 	})
@@ -501,11 +535,13 @@ const isGameType = computed(() => {
 			for (const item of items) {
 				const name = cfg.itemType === 'food' ? item.food_name : item.toy_name
 				const effectVal = cfg.itemType === 'food' ? item.energy_add : item.mood_add
+				const code = cfg.itemType === 'food' ? item.food_code : item.toy_code
 				try {
 					const res = await addReward({
 						stu_class_id: currentClass.value!.id,
 						type: cfg.type,
 						game_id: cfg.gameId,
+						code: code,
 						name: name,
 						points: importForm.value.points,
 						stock: importForm.value.stock,
@@ -607,6 +643,15 @@ const isGameType = computed(() => {
 .type-group-week { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
 .reward-info { padding: 16px; }
 .reward-name { font-size: 1.1rem; font-weight: 600; color: #1e293b; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reward-code {
+	margin-bottom: 8px;
+	padding: 4px 8px;
+	background: #f0f9ff;
+	border-radius: 4px;
+	border-left: 3px solid #3b82f6;
+}
+.code-label { font-size: 12px; color: #64748b; font-weight: 500; }
+.code-value { font-size: 12px; color: #1e40af; font-family: 'Courier New', monospace; font-weight: 600; }
 .reward-attrs {
 	display: flex;
 	flex-wrap: wrap;

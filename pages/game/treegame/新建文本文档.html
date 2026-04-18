@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas 动态种树 - 蚂蚁森林效果</title>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0a2a43 0%, #1b4f6e 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .game-container {
+            background: #87CEEB;
+            border-radius: 24px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 16px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
+            background: linear-gradient(to bottom, #c8e6c9 0%, #a5d6a7 100%);
+            cursor: pointer;
+        }
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 16px 8px 8px 8px;
+            color: #2e5c3e;
+            font-weight: bold;
+        }
+        .energy-bar {
+            flex: 1;
+            height: 12px;
+            background: #ddd;
+            border-radius: 20px;
+            margin: 0 20px;
+            overflow: hidden;
+        }
+        .energy-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50, #8bc34a);
+            transition: width 0.3s ease;
+            border-radius: 20px;
+        }
+        button {
+            background: #2e7d32;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: transform 0.2s, background 0.2s;
+        }
+        button:hover {
+            background: #1b5e20;
+            transform: scale(1.02);
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        .stats span {
+            margin-right: 20px;
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <canvas id="treeCanvas" width="600" height="500"></canvas>
+    
+    <div class="info-panel">
+        <div class="stats">
+            <span>🌱 能量: <span id="energyValue">0</span></span>
+            <span>🌿 叶子: <span id="leafCount">0</span></span>
+        </div>
+        <div class="energy-bar">
+            <div class="energy-fill" id="energyFill"></div>
+        </div>
+        <button id="growBtn">💧 浇水 (+10)</button>
+    </div>
+</div>
+
+<script>
+    (function(){
+        "use strict";
+        
+        // 获取 Canvas 元素与上下文
+        const canvas = document.getElementById('treeCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // ========== 可调节参数 ==========
+        const CONFIG = {
+            // 树的基础参数
+            trunkStartX: 300,           // 树干起点 X（画布中央）
+            trunkStartY: 480,           // 树干起点 Y（靠近底部）
+            trunkLength: 80,            // 初始树干长度
+            trunkAngle: -Math.PI / 2,   // 初始角度（向上，-90°）
+            trunkWidth: 18,             // 初始树干宽度
+            
+            // 生长参数
+            maxDepth: 12,               // 最大递归深度（树的最大复杂度）
+            lengthDecay: 0.72,          // 每层树枝长度衰减系数
+            widthDecay: 0.65,           // 每层树枝宽度衰减系数
+            branchAngle: 0.4,           // 分支角度（弧度，约23°）
+            leafThreshold: 3,           // 深度 ≤ 此值时开始绘制叶子
+            
+            // 动画参数
+            growthSpeed: 80,            // 生长动画速度（ms/步）
+            leafSwaySpeed: 0.02,        // 叶子飘动速度
+            
+            // 颜色配置
+            trunkColor: '#5D4037',      // 树干棕色
+            branchColor: '#6D4C41',     // 树枝深棕
+            leafColors: ['#4CAF50', '#66BB6A', '#81C784', '#A5D6A7', '#2E7D32']
+        };
+        
+        // ========== 核心状态管理 ==========
+        const state = {
+            energy: 0,                  // 当前能量值（0~100）
+            targetDepth: 0,             // 目标绘制深度（由能量值计算）
+            currentDepth: 0,            // 当前动画中的实际绘制深度
+            leafCount: 0,               // 当前实际绘制的叶子数量
+            isAnimating: false,         // 是否正在播放生长动画
+            animationTimer: null,       // 动画定时器句柄
+            swayOffset: 0               // 叶子飘动偏移量
+        };
+        
+        // ========== DOM 元素 ==========
+        const energySpan = document.getElementById('energyValue');
+        const leafSpan = document.getElementById('leafCount');
+        const energyFill = document.getElementById('energyFill');
+        const growBtn = document.getElementById('growBtn');
+        
+        // ========== 辅助函数 ==========
+        
+        /**
+         * 根据能量值计算目标深度
+         * 能量 0~100 映射到深度 0~maxDepth
+         */
+        function calculateTargetDepth(energy) {
+            return Math.floor((energy / 100) * CONFIG.maxDepth);
+        }
+        
+        /**
+         * 更新 UI 显示
+         */
+        function updateUI() {
+            energySpan.textContent = state.energy;
+            leafSpan.textContent = state.leafCount;
+            energyFill.style.width = state.energy + '%';
+        }
+        
+        // ========== 核心：递归绘制树木 ==========
+        // 叶子计数器（在绘制过程中统计）
+        let leafCounter = 0;
+        
+        /**
+         * 递归绘制树的主函数
+         * @param {number} startX - 起点 X 坐标
+         * @param {number} startY - 起点 Y 坐标
+         * @param {number} length - 当前枝干长度
+         * @param {number} angle - 当前枝干方向角度（弧度）
+         * @param {number} depth - 剩余递归深度
+         * @param {number} branchWidth - 当前枝干宽度
+         */
+        function drawBranch(startX, startY, length, angle, depth, branchWidth) {
+            if (depth <= 0 || length < 2) return;
+            
+            // 计算终点坐标
+            const endX = startX + length * Math.cos(angle);
+            const endY = startY + length * Math.sin(angle);
+            
+            // 根据深度选择颜色：较深的枝干用棕色，较浅的用绿色（叶子）
+            const isLeafLevel = depth <= CONFIG.leafThreshold;
+            
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.lineCap = 'round';
+            ctx.lineWidth = branchWidth;
+            
+            if (isLeafLevel) {
+                // 叶子层级：用绿色，并统计叶子数量
+                const colorIndex = Math.floor(Math.random() * CONFIG.leafColors.length);
+                ctx.strokeStyle = CONFIG.leafColors[colorIndex];
+                leafCounter++;
+            } else {
+                // 枝干层级：用棕色系
+                ctx.strokeStyle = depth > 6 ? CONFIG.trunkColor : CONFIG.branchColor;
+            }
+            
+            ctx.stroke();
+            
+            // 如果深度为 0，停止递归
+            if (depth <= 1) return;
+            
+            // 计算子分支参数
+            const newDepth = depth - 1;
+            const newLength = length * (CONFIG.lengthDecay + Math.random() * 0.1);
+            const newWidth = branchWidth * CONFIG.widthDecay;
+            
+            // 随机决定分支数量（2~3个分支，更自然）
+            const branchCount = depth > 4 ? (Math.random() > 0.5 ? 3 : 2) : 2;
+            
+            if (branchCount === 2) {
+                // 左分支
+                drawBranch(endX, endY, newLength, angle - CONFIG.branchAngle, newDepth, newWidth);
+                // 右分支
+                drawBranch(endX, endY, newLength, angle + CONFIG.branchAngle, newDepth, newWidth);
+            } else {
+                // 三个分支：左、中、右
+                drawBranch(endX, endY, newLength, angle - CONFIG.branchAngle * 1.2, newDepth, newWidth);
+                drawBranch(endX, endY, newLength, angle, newDepth, newWidth);
+                drawBranch(endX, endY, newLength, angle + CONFIG.branchAngle * 1.2, newDepth, newWidth);
+            }
+            
+            // 在叶子层级额外绘制一些小叶片，增加丰富度
+            if (isLeafLevel && depth === CONFIG.leafThreshold) {
+                drawLeafCluster(endX, endY, angle, branchWidth * 3);
+            }
+        }
+        
+        /**
+         * 在枝干末端绘制叶片簇
+         */
+        function drawLeafCluster(x, y, baseAngle, size) {
+            const leafCount = 3 + Math.floor(Math.random() * 4);
+            const sway = Math.sin(state.swayOffset) * 0.15;
+            
+            for (let i = 0; i < leafCount; i++) {
+                const leafAngle = baseAngle + (i - leafCount/2) * 0.5 + sway;
+                const leafLength = size * (0.6 + Math.random() * 0.5);
+                const endX = x + leafLength * Math.cos(leafAngle);
+                const endY = y + leafLength * Math.sin(leafAngle);
+                
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(endX, endY);
+                ctx.lineWidth = size * 0.3;
+                ctx.strokeStyle = CONFIG.leafColors[Math.floor(Math.random() * CONFIG.leafColors.length)];
+                ctx.stroke();
+                
+                leafCounter++;
+            }
+        }
+        
+        /**
+         * 绘制背景（土地、草地等装饰元素）
+         */
+        function drawBackground() {
+            // 草地
+            ctx.fillStyle = '#81C784';
+            ctx.beginPath();
+            ctx.rect(0, canvas.height - 30, canvas.width, 30);
+            ctx.fill();
+            
+            // 土地
+            ctx.fillStyle = '#5D4037';
+            ctx.beginPath();
+            ctx.rect(0, canvas.height - 15, canvas.width, 15);
+            ctx.fill();
+            
+            // 小草点缀
+            ctx.strokeStyle = '#4CAF50';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 8; i++) {
+                const x = 50 + i * 70 + Math.random() * 20;
+                const y = canvas.height - 30;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x - 5, y - 15);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + 5, y - 12);
+                ctx.stroke();
+            }
+        }
+        
+        /**
+         * 主绘制函数：清空画布 → 绘制背景 → 绘制树木
+         */
+        function drawTree() {
+            // 重置叶子计数器
+            leafCounter = 0;
+            
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制背景装饰
+            drawBackground();
+            
+            // 如果当前深度 > 0，绘制树木
+            if (state.currentDepth > 0) {
+                drawBranch(
+                    CONFIG.trunkStartX,
+                    CONFIG.trunkStartY,
+                    CONFIG.trunkLength,
+                    CONFIG.trunkAngle,
+                    state.currentDepth,
+                    CONFIG.trunkWidth
+                );
+            } else {
+                // 深度为 0 时，只显示一棵小苗
+                drawSeedling();
+            }
+            
+            // 更新状态中的叶子数量
+            state.leafCount = leafCounter;
+            
+            // 更新 UI
+            updateUI();
+        }
+        
+        /**
+         * 绘制幼苗（能量为0时的状态）
+         */
+        function drawSeedling() {
+            const x = CONFIG.trunkStartX;
+            const y = CONFIG.trunkStartY;
+            
+            // 小土堆
+            ctx.fillStyle = '#6D4C41';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 5, 20, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 小苗
+            ctx.strokeStyle = '#66BB6A';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x, y - 5);
+            ctx.lineTo(x, y - 25);
+            ctx.stroke();
+            
+            // 两片小叶
+            ctx.fillStyle = '#81C784';
+            ctx.beginPath();
+            ctx.ellipse(x - 6, y - 22, 5, 3, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 6, y - 18, 5, 3, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            leafCounter = 2;
+        }
+        
+        // ========== 动画系统 ==========
+        
+        /**
+         * 开始生长动画（从当前深度平滑过渡到目标深度）
+         */
+        function startGrowthAnimation() {
+            // 清除已有的动画
+            if (state.animationTimer) {
+                clearInterval(state.animationTimer);
+            }
+            
+            state.isAnimating = true;
+            const target = state.targetDepth;
+            const step = state.currentDepth < target ? 1 : -1;
+            
+            state.animationTimer = setInterval(() => {
+                // 更新当前深度
+                state.currentDepth += step;
+                
+                // 更新飘动偏移量（用于叶子摆动效果）
+                state.swayOffset += CONFIG.leafSwaySpeed;
+                
+                // 绘制当前帧
+                drawTree();
+                
+                // 检查是否到达目标深度
+                if (state.currentDepth === target) {
+                    clearInterval(state.animationTimer);
+                    state.animationTimer = null;
+                    state.isAnimating = false;
+                }
+            }, CONFIG.growthSpeed);
+        }
+        
+        /**
+         * 立即跳转到目标深度（无动画，用于初始化）
+         */
+        function jumpToDepth(depth) {
+            state.currentDepth = depth;
+            drawTree();
+        }
+        
+        // ========== 能量管理 ==========
+        
+        /**
+         * 增加能量（浇水）
+         */
+        function addEnergy(amount) {
+            const newEnergy = Math.min(state.energy + amount, 100);
+            
+            // 如果能量没有变化，直接返回
+            if (newEnergy === state.energy) return;
+            
+            state.energy = newEnergy;
+            const newTargetDepth = calculateTargetDepth(state.energy);
+            
+            // 如果目标深度发生变化
+            if (newTargetDepth !== state.targetDepth) {
+                state.targetDepth = newTargetDepth;
+                
+                // 如果没有正在播放动画，启动动画
+                if (!state.isAnimating) {
+                    startGrowthAnimation();
+                } else {
+                    // 如果正在动画中，调整目标后动画会自动向新目标前进
+                    // 这里简单处理：重新启动动画以响应新目标
+                    startGrowthAnimation();
+                }
+            }
+            
+            updateUI();
+        }
+        
+        // ========== 交互与初始化 ==========
+        
+        /**
+         * 初始化系统
+         */
+        function init() {
+            // 设置初始状态
+            state.energy = 0;
+            state.targetDepth = 0;
+            state.currentDepth = 0;
+            
+            // 绘制初始画面
+            drawTree();
+            
+            // 绑定浇水按钮事件
+            growBtn.addEventListener('click', () => {
+                addEnergy(10);
+            });
+            
+            // 点击画布也可以浇水（增加趣味性）
+            canvas.addEventListener('click', (e) => {
+                // 可选：在点击位置显示水波纹效果
+                addEnergy(5);
+            });
+            
+            // 启动叶子飘动动画（持续的背景动画）
+            function swayAnimation() {
+                if (!state.isAnimating) {
+                    state.swayOffset += CONFIG.leafSwaySpeed;
+                    drawTree();
+                }
+                requestAnimationFrame(swayAnimation);
+            }
+            swayAnimation();
+        }
+        
+        // 启动一切
+        init();
+        
+    })();
+</script>
+</body>
+</html>
