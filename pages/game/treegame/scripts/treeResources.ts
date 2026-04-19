@@ -128,7 +128,7 @@ export function getExpPercent(level: number, exp: number): number {
 }
 
 export function getTrunkHeight(level: number): number {
-	return 80 + level * 30
+	return 120 + level * 40
 }
 
 export function getTrunkThickness(level: number): number {
@@ -141,9 +141,9 @@ export function getCanopyRadius(level: number): number {
 
 const TREE_CONFIG = {
 	maxDepth: 12,
-	lengthDecay: 0.72,
-	widthDecay: 0.65,
-	branchAngle: 0.4,
+	widthDecay: 0.7,
+	branchAngleMin: 0.09,
+	branchAngleMax: 1.05,
 	leafThreshold: 3,
 	baseTrunkLength: 80,
 	baseTrunkWidth: 14,
@@ -159,21 +159,17 @@ function seededRandom(seed: number): () => number {
 }
 
 function getBranchStartRatio(level: number): number {
-	if (level <= 3) return 1 / 3
-	if (level <= 6) return 1 / 2
-	return 2 / 3
+	return 1 / 2
 }
 
 function getMaxDepth(level: number): number {
-	if (level <= 3) return level + 2
-	if (level <= 6) return level + 3
-	return Math.min(level + 4, TREE_CONFIG.maxDepth)
+	if (level <= 3) return 3
+	if (level <= 6) return 4
+	return 5
 }
 
 function getInitialBranchCount(level: number, rng: () => number): number {
-	if (level <= 3) return 2
-	if (level <= 6) return 2 + Math.floor(rng() * 2)
-	return 3 + Math.floor(rng() * 2)
+	return 4 + level * 2
 }
 
 function getSubBranchCount(depth: number, level: number, rng: () => number): number {
@@ -182,33 +178,44 @@ function getSubBranchCount(depth: number, level: number, rng: () => number): num
 	return 2
 }
 
-function getLeafCount(level: number, rng: () => number): number {
-	if (level <= 3) return 2 + Math.floor(rng() * 2)
-	return 3 + Math.floor(rng() * 4)
+function getLeafCount(level: number, depth: number, maxDepth: number, rng: () => number): number {
+	const levelBonus = Math.floor(level * 0.3)
+	if (depth <= 2) {
+		return (8 + levelBonus * 2) + Math.floor(rng() * 4)
+	} else if (depth === 3) {
+		return (4 + levelBonus) + Math.floor(rng() * 2)
+	} else if (depth === 4) {
+		return Math.max(0, (4 + levelBonus - 4) + Math.floor(rng() * 2))
+	}
+	return 0
 }
 
 function generateTreeBranchesFractal(level: number, trunkHeight: number): TreeBranch[] {
 	const branches: TreeBranch[] = []
 	const maxDepth = getMaxDepth(level)
 	const rng = seededRandom(level * 137 + 42)
-	const startRatio = getBranchStartRatio(level)
 
-	const branchStartY = -trunkHeight * startRatio
+	const mainBranchLength = trunkHeight * (2 / 3) * (0.8 + level * 0.05)
+	const mainBranchThickness = TREE_CONFIG.baseTrunkWidth * (1 + level * 0.1)
 
 	const initialBranchCount = getInitialBranchCount(level, rng)
+	const branchYMin = -trunkHeight * (3 / 4)
+	const branchYMax = -trunkHeight * (1 / 2)
 	for (let i = 0; i < initialBranchCount; i++) {
-		const spreadAngle = initialBranchCount <= 2
-			? (i === 0 ? -1 : 1) * (TREE_CONFIG.branchAngle + rng() * 0.1)
-			: (i - (initialBranchCount - 1) / 2) * 0.35
+		const branchY = branchYMin + (branchYMax - branchYMin) * (i / Math.max(1, initialBranchCount - 1))
+		const side = i % 2 === 0 ? -1 : 1
+		const order = Math.floor(i / 2)
+		const baseSpread = TREE_CONFIG.branchAngleMin + rng() * (TREE_CONFIG.branchAngleMax - TREE_CONFIG.branchAngleMin)
+		const spreadAngle = side * (baseSpread + order * 0.15)
 		const baseAngle = -Math.PI / 2 + spreadAngle
-		const length = TREE_CONFIG.baseTrunkLength * (0.8 + rng() * 0.4) * (1 + level * 0.1)
-		const thickness = TREE_CONFIG.baseTrunkWidth * (0.7 + rng() * 0.3) * (1 + level * 0.06)
+		const length = mainBranchLength * (0.85 + rng() * 0.3)
+		const thickness = mainBranchThickness * (0.7 + rng() * 0.3)
 
 		generateBranchRecursive(
-			0, branchStartY,
-			baseAngle + (rng() - 0.5) * 0.15,
+			0, branchY,
+			baseAngle + (rng() - 0.5) * 0.2,
 			length, thickness,
-			1, maxDepth, branches, rng, level
+			1, maxDepth, branches, rng, level, trunkHeight
 		)
 	}
 
@@ -224,7 +231,8 @@ function generateBranchRecursive(
 	maxDepth: number,
 	branches: TreeBranch[],
 	rng: () => number,
-	treeLevel: number
+	treeLevel: number,
+	trunkHeight: number
 ): void {
 	if (depth > maxDepth || length < 2 || thickness < 1) return
 
@@ -238,25 +246,26 @@ function generateBranchRecursive(
 		children: []
 	}
 
-	if (depth >= maxDepth - TREE_CONFIG.leafThreshold) {
-		const leafCount = getLeafCount(treeLevel, rng)
-		for (let i = 0; i < leafCount; i++) {
-			const t = 0.3 + rng() * 0.7
-			const lx = startX + (endX - startX) * t
-			const ly = startY + (endY - startY) * t
-			const leafAngle = angle + (rng() - 0.5) * Math.PI * 0.8
-			const leafSize = TREE_CONFIG.baseLeafSize * (0.8 + rng() * 0.5) * (1 + treeLevel * 0.05)
-			branch.leaves.push({ x: lx, y: ly, angle: leafAngle, size: leafSize })
-		}
+	const depthRatio = depth / maxDepth
+	const leafProbability = 0.3 + depthRatio * 0.7
+
+	const leafCount = getLeafCount(treeLevel, depth, maxDepth, rng)
+	for (let i = 0; i < leafCount; i++) {
+		const t = rng()
+		const lx = startX + (endX - startX) * t
+		const ly = startY + (endY - startY) * t
+		const leafAngle = rng() * Math.PI * 2
+		const leafSize = TREE_CONFIG.baseLeafSize * (0.8 + rng() * 0.5) * (1 + treeLevel * 0.05)
+		branch.leaves.push({ x: lx, y: ly, angle: leafAngle, size: leafSize })
 	}
 
-	if (depth === maxDepth - TREE_CONFIG.leafThreshold) {
+	if (depthRatio >= 0.3 && rng() < leafProbability * 0.8) {
 		const clusterCount = treeLevel <= 3 ? 2 : 3 + Math.floor(rng() * 3)
 		for (let i = 0; i < clusterCount; i++) {
-			const t = 0.4 + rng() * 0.6
+			const t = rng()
 			const cx = startX + (endX - startX) * t
 			const cy = startY + (endY - startY) * t
-			const leafAngle = angle + (rng() - 0.5) * Math.PI * 0.6
+			const leafAngle = rng() * Math.PI * 2
 			const leafSize = TREE_CONFIG.baseLeafSize * (0.6 + rng() * 0.4) * (1 + treeLevel * 0.04)
 			branch.leaves.push({ x: cx, y: cy, angle: leafAngle, size: leafSize })
 		}
@@ -265,24 +274,27 @@ function generateBranchRecursive(
 	branches.push(branch)
 
 	const branchCount = getSubBranchCount(depth, treeLevel, rng)
-	const newLength = length * (TREE_CONFIG.lengthDecay + rng() * 0.1)
+	const parentLength = length
+	const childMaxLength = depth === 1 ? trunkHeight * (2 / 3) : parentLength * (2 / 3)
+	const newLength = childMaxLength * (0.7 + rng() * 0.3)
 	const newThickness = thickness * TREE_CONFIG.widthDecay
 
 	for (let i = 0; i < branchCount; i++) {
-		let newAngle: number
-		if (branchCount === 2) {
-			newAngle = angle + (i === 0 ? -1 : 1) * (TREE_CONFIG.branchAngle + rng() * 0.15)
-		} else {
-			const offsets = [-TREE_CONFIG.branchAngle * 1.2, 0, TREE_CONFIG.branchAngle * 1.2]
-			newAngle = angle + offsets[i] + (rng() - 0.5) * 0.1
-		}
+		const branchStartT = 0.33 + rng() * 0.17
+		const bx = startX + (endX - startX) * branchStartT
+		const by = startY + (endY - startY) * branchStartT
+
+		const side = i % 2 === 0 ? -1 : 1
+		const order = Math.floor(i / 2)
+		const branchAngle = TREE_CONFIG.branchAngleMin + rng() * (TREE_CONFIG.branchAngleMax - TREE_CONFIG.branchAngleMin)
+		const newAngle = angle + side * (branchAngle + order * 0.15)
 
 		generateBranchRecursive(
-			endX, endY,
+			bx, by,
 			newAngle,
 			newLength, newThickness,
 			depth + 1, maxDepth,
-			branches, rng, treeLevel
+			branches, rng, treeLevel, trunkHeight
 		)
 	}
 }
