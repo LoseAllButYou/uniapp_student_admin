@@ -4,6 +4,28 @@ export { IMG_BASE } from './materialConfig'
 
 export const WATER_COOLING_MS = 30 * 60 * 1000
 
+// 种树最小X轴距离（像素）- 350px
+export const MIN_TREE_DISTANCE_X = 350
+
+/**
+ * 检查指定X坐标是否可以种树（与现有树的X轴距离是否足够）
+ * @param x 要检查的X坐标
+ * @param existingTrees 现有树木数组
+ * @returns { canPlant: boolean, nearestTree?: TreeRenderData }
+ */
+export function checkCanPlantAtX(
+	x: number,
+	existingTrees: TreeRenderData[]
+): { canPlant: boolean; nearestTree?: TreeRenderData; distance?: number } {
+	for (const tree of existingTrees) {
+		const distance = Math.abs(x - tree.worldX)
+		if (distance < MIN_TREE_DISTANCE_X) {
+			return { canPlant: false, nearestTree: tree, distance }
+		}
+	}
+	return { canPlant: true }
+}
+
 export interface BranchLeaf {
 	x: number
 	y: number
@@ -36,7 +58,7 @@ export function preloadAllImages(): Promise<void> {
 	}
 
 	imagesLoading = true
-	const toLoad: string[] = [`${IMG_BASE}/bg.svg`]
+	const toLoad: string[] = [`${IMG_BASE}/bg.png`]
 	for (const type in TREE_MATERIALS) {
 		const mat = TREE_MATERIALS[type]
 		toLoad.push(mat.trunk, mat.branch, mat.leaf, mat.treeIcon)
@@ -142,8 +164,12 @@ export function getCanopyRadius(level: number): number {
 const TREE_CONFIG = {
 	maxDepth: 12,
 	widthDecay: 0.7,
-	branchAngleMin: 0.09,
-	branchAngleMax: 1.05,
+	// 前两层级（depth 1-2）倾斜角度：30-60度
+	branchAngleMinEarly: 0.52,  // 30°
+	branchAngleMaxEarly: 1.05,  // 60°
+	// 后面层级（depth >= 3）倾斜角度：45-75度
+	branchAngleMinLate: 0.79,   // 45°
+	branchAngleMaxLate: 1.31,   // 75°
 	leafThreshold: 3,
 	baseTrunkLength: 80,
 	baseTrunkWidth: 14,
@@ -163,13 +189,15 @@ function getBranchStartRatio(level: number): number {
 }
 
 function getMaxDepth(level: number): number {
-	if (level <= 3) return 3
-	if (level <= 6) return 4
-	return 5
+	// 减少1级
+	if (level <= 3) return 2
+	if (level <= 6) return 3
+	return 4
 }
 
 function getInitialBranchCount(level: number, rng: () => number): number {
-	return 4 + level * 2
+	// 减少到原来的2/3
+	return Math.floor((4 + level * 2) * 2 / 3)
 }
 
 function getSubBranchCount(depth: number, level: number, rng: () => number): number {
@@ -193,26 +221,50 @@ function getLeafCount(level: number, depth: number, maxDepth: number, rng: () =>
 function generateTreeBranchesFractal(level: number, trunkHeight: number): TreeBranch[] {
 	const branches: TreeBranch[] = []
 	const maxDepth = getMaxDepth(level)
-	const rng = seededRandom(level * 137 + 42)
+	// 使用随机种子，让每次生成的树样式不同
+	const randomSeed = Math.floor(Math.random() * 10000)
+	const rng = seededRandom(level * 137 + 42 + randomSeed)
 
 	const mainBranchLength = trunkHeight * (2 / 3) * (0.8 + level * 0.05)
 	const mainBranchThickness = TREE_CONFIG.baseTrunkWidth * (1 + level * 0.1)
 
 	const initialBranchCount = getInitialBranchCount(level, rng)
-	const branchYMin = -trunkHeight * (3 / 4)
+	// 修改Y轴分布：从树干9/10到1/2均匀分布
+	const branchYMin = -trunkHeight * (9 / 10)
 	const branchYMax = -trunkHeight * (1 / 2)
+	// 获取树干粗细用于计算x轴偏移范围
+	const trunkThickness = getTrunkThickness(level)
 	for (let i = 0; i < initialBranchCount; i++) {
 		const branchY = branchYMin + (branchYMax - branchYMin) * (i / Math.max(1, initialBranchCount - 1))
 		const side = i % 2 === 0 ? -1 : 1
 		const order = Math.floor(i / 2)
-		const baseSpread = TREE_CONFIG.branchAngleMin + rng() * (TREE_CONFIG.branchAngleMax - TREE_CONFIG.branchAngleMin)
-		const spreadAngle = side * (baseSpread + order * 0.15)
+		// 主枝使用15-45度角度范围，确保不超过45度
+		const maxAngle = TREE_CONFIG.branchAngleMaxEarly
+		const minAngle = TREE_CONFIG.branchAngleMinEarly
+		// 均匀分布：根据order计算基础角度，确保整体分布在15-45度范围内
+		const angleStep = (maxAngle - minAngle) / Math.max(2, initialBranchCount / 2)
+		const baseAngleOffset = minAngle + order * angleStep + rng() * (angleStep * 0.5)
+		// 限制在45度以内
+		const clampedAngle = Math.min(baseAngleOffset, maxAngle)
+		const spreadAngle = side * clampedAngle
 		const baseAngle = -Math.PI / 2 + spreadAngle
 		const length = mainBranchLength * (0.85 + rng() * 0.3)
 		const thickness = mainBranchThickness * (0.7 + rng() * 0.3)
 
+		// 主枝与树干连接位置的x轴偏移
+		// 根据Y轴位置计算树干在该高度的宽度（锥形树干，越往上越细）
+		const normalizedY = Math.abs(branchY) / trunkHeight  // 0-1范围，越靠近顶端越小
+		const currentThickness = trunkThickness * (0.3 + normalizedY * 0.7)  // 顶端最细30%，底部最粗100%
+		const halfThickness = currentThickness * 0.5
+		
+		// 左侧偏移稍大（树干向左偏），右侧偏移稍小
+		// 基础偏移：左侧-0.5，右侧0.4，让左侧更靠外
+		const baseOffsetRatio = side === -1 ? -0.5 : 0.4
+		const offsetRange = halfThickness * 0.25
+		const xOffset = baseOffsetRatio * halfThickness + (rng() - 0.5) * offsetRange
+
 		generateBranchRecursive(
-			0, branchY,
+			xOffset, branchY,
 			baseAngle + (rng() - 0.5) * 0.2,
 			length, thickness,
 			1, maxDepth, branches, rng, level, trunkHeight
@@ -246,28 +298,31 @@ function generateBranchRecursive(
 		children: []
 	}
 
-	const depthRatio = depth / maxDepth
-	const leafProbability = 0.3 + depthRatio * 0.7
+	// 叶子只长在第二级往下的枝上（depth >= 2），第一级（主枝）不长叶子
+	if (depth >= 2) {
+		const depthRatio = depth / maxDepth
+		const leafProbability = 0.3 + depthRatio * 0.7
 
-	const leafCount = getLeafCount(treeLevel, depth, maxDepth, rng)
-	for (let i = 0; i < leafCount; i++) {
-		const t = rng()
-		const lx = startX + (endX - startX) * t
-		const ly = startY + (endY - startY) * t
-		const leafAngle = rng() * Math.PI * 2
-		const leafSize = TREE_CONFIG.baseLeafSize * (0.8 + rng() * 0.5) * (1 + treeLevel * 0.05)
-		branch.leaves.push({ x: lx, y: ly, angle: leafAngle, size: leafSize })
-	}
-
-	if (depthRatio >= 0.3 && rng() < leafProbability * 0.8) {
-		const clusterCount = treeLevel <= 3 ? 2 : 3 + Math.floor(rng() * 3)
-		for (let i = 0; i < clusterCount; i++) {
+		const leafCount = getLeafCount(treeLevel, depth, maxDepth, rng)
+		for (let i = 0; i < leafCount; i++) {
 			const t = rng()
-			const cx = startX + (endX - startX) * t
-			const cy = startY + (endY - startY) * t
+			const lx = startX + (endX - startX) * t
+			const ly = startY + (endY - startY) * t
 			const leafAngle = rng() * Math.PI * 2
-			const leafSize = TREE_CONFIG.baseLeafSize * (0.6 + rng() * 0.4) * (1 + treeLevel * 0.04)
-			branch.leaves.push({ x: cx, y: cy, angle: leafAngle, size: leafSize })
+			const leafSize = TREE_CONFIG.baseLeafSize * (0.8 + rng() * 0.5) * (1 + treeLevel * 0.05)
+			branch.leaves.push({ x: lx, y: ly, angle: leafAngle, size: leafSize })
+		}
+
+		if (depthRatio >= 0.3 && rng() < leafProbability * 0.8) {
+			const clusterCount = treeLevel <= 3 ? 2 : 3 + Math.floor(rng() * 3)
+			for (let i = 0; i < clusterCount; i++) {
+				const t = rng()
+				const cx = startX + (endX - startX) * t
+				const cy = startY + (endY - startY) * t
+				const leafAngle = rng() * Math.PI * 2
+				const leafSize = TREE_CONFIG.baseLeafSize * (0.6 + rng() * 0.4) * (1 + treeLevel * 0.04)
+				branch.leaves.push({ x: cx, y: cy, angle: leafAngle, size: leafSize })
+			}
 		}
 	}
 
@@ -275,19 +330,50 @@ function generateBranchRecursive(
 
 	const branchCount = getSubBranchCount(depth, treeLevel, rng)
 	const parentLength = length
-	const childMaxLength = depth === 1 ? trunkHeight * (2 / 3) : parentLength * (2 / 3)
-	const newLength = childMaxLength * (0.7 + rng() * 0.3)
+	// 下级树枝长度为父级的2/3
+	const newLength = parentLength * (2 / 3) * (0.85 + rng() * 0.15)
 	const newThickness = thickness * TREE_CONFIG.widthDecay
 
 	for (let i = 0; i < branchCount; i++) {
-		const branchStartT = 0.33 + rng() * 0.17
-		const bx = startX + (endX - startX) * branchStartT
-		const by = startY + (endY - startY) * branchStartT
-
 		const side = i % 2 === 0 ? -1 : 1
 		const order = Math.floor(i / 2)
-		const branchAngle = TREE_CONFIG.branchAngleMin + rng() * (TREE_CONFIG.branchAngleMax - TREE_CONFIG.branchAngleMin)
-		const newAngle = angle + side * (branchAngle + order * 0.15)
+
+		// 连接位置：
+		// - 2级分支（父级是1级，depth=1）从1级分支根部（0）开始分布
+		// - 3级及以上分支从父分支1/5到顶端分布
+		let branchStartT: number
+		if (depth === 1) {
+			// 生成2级分支，从1级分支根部开始（0 ~ 0.6）
+			branchStartT = rng() * 0.6
+		} else {
+			// 3级及以上，从父分支1/5到顶端
+			branchStartT = 0.2 + rng() * 0.8
+		}
+		let bx = startX + (endX - startX) * branchStartT
+		let by = startY + (endY - startY) * branchStartT
+
+		// 树木3级及以上（treeLevel >= 3）在连接上级分支时开启偏移
+		if (treeLevel >= 3) {
+			// 垂直于父分支的方向
+			const perpAngle = angle + Math.PI / 2
+			// 左半边树枝连接在父分支左半边（-thickness/2 ~ 0），右半边连接在右半边（0 ~ thickness/2）
+			const halfThickness = thickness * 0.5
+			const offsetBase = side === -1 ? -halfThickness * 0.5 : halfThickness * 0.5
+			const offsetRange = halfThickness * 0.5  // 在半宽范围内随机
+			const randomOffset = offsetBase + (rng() - 0.5) * offsetRange
+			bx = bx + Math.cos(perpAngle) * randomOffset
+			by = by + Math.sin(perpAngle) * randomOffset
+		}
+
+		// 根据层级选择角度范围：前两层级30-60度，后面层级45-75度
+		const isEarlyLevel = depth <= 2
+		const angleMin = isEarlyLevel ? TREE_CONFIG.branchAngleMinEarly : TREE_CONFIG.branchAngleMinLate
+		const angleMax = isEarlyLevel ? TREE_CONFIG.branchAngleMaxEarly : TREE_CONFIG.branchAngleMaxLate
+		// 均匀分布，确保不超过最大角度
+		const angleStep = (angleMax - angleMin) / Math.max(2, branchCount / 2)
+		const baseAngleOffset = angleMin + order * angleStep + rng() * (angleStep * 0.5)
+		const clampedAngle = Math.min(baseAngleOffset, angleMax)
+		const newAngle = angle + side * clampedAngle
 
 		generateBranchRecursive(
 			bx, by,
@@ -319,6 +405,43 @@ export function buildTreeRenderData(
 	}
 }
 
+function getTreeBoundingBox(tree: TreeRenderData): { minX: number; maxX: number; minY: number; maxY: number } {
+	const trunkTop = -tree.trunkHeight
+	const branches = tree.branches as any as TreeBranch[]
+	
+	let minX = -tree.trunkThickness
+	let maxX = tree.trunkThickness
+	let minY = trunkTop - tree.canopyRadius
+	let maxY = 10
+	
+	for (const branch of branches) {
+		minX = Math.min(minX, branch.startX - branch.thickness, branch.endX - branch.thickness)
+		maxX = Math.max(maxX, branch.startX + branch.thickness, branch.endX + branch.thickness)
+		minY = Math.min(minY, branch.startY - branch.thickness, branch.endY - branch.thickness)
+		maxY = Math.max(maxY, branch.startY + branch.thickness, branch.endY + branch.thickness)
+		
+		for (const leaf of branch.leaves) {
+			minX = Math.min(minX, leaf.x - leaf.size)
+			maxX = Math.max(maxX, leaf.x + leaf.size)
+			minY = Math.min(minY, leaf.y - leaf.size)
+			maxY = Math.max(maxY, leaf.y + leaf.size)
+		}
+	}
+	
+	return { minX, maxX, minY, maxY }
+}
+
+// 全局摇摆时间偏移
+let windTime = 0
+
+export function updateWindTime(delta: number = 0.016): void {
+	windTime += delta
+}
+
+export function getWindTime(): number {
+	return windTime
+}
+
 export function drawTreeOnCanvas(
 	ctx: CanvasRenderingContext2D,
 	tree: TreeRenderData,
@@ -326,7 +449,8 @@ export function drawTreeOnCanvas(
 	cameraY: number,
 	zoom: number,
 	selected: boolean,
-	dpr: number = 1
+	dpr: number = 1,
+	windOffset: number = 0
 ): void {
 	const sx = (tree.worldX - cameraX) * zoom * dpr
 	const sy = (tree.worldY - cameraY) * zoom * dpr
@@ -341,22 +465,128 @@ export function drawTreeOnCanvas(
 	ctx.translate(sx, sy)
 	ctx.scale(scale, scale)
 
-	if (selected) {
-		ctx.shadowColor = 'rgba(76, 175, 80, 0.6)'
-		ctx.shadowBlur = 15
+	// 应用随风摇摆效果（树干轻微摇摆）
+	if (windOffset !== 0) {
+		const swayAngle = windOffset * 0.02  // 最大摇摆角度
+		ctx.rotate(swayAngle)
 	}
 
 	drawTrunk(ctx, tree.trunkHeight, tree.trunkThickness, colors.trunk, trunkImg)
 
 	const branches = tree.branches as any as TreeBranch[]
-	drawAllBranches(ctx, branches, colors, tree.treeType, branchImg, leafImg)
+	drawAllBranches(ctx, branches, colors, tree.treeType, branchImg, leafImg, windOffset)
 
+	// 选中时绘制绿色实线轮廓，加粗显眼
 	if (selected) {
-		ctx.shadowBlur = 0
+		const bbox = getTreeBoundingBox(tree)
+		ctx.save()
+		// 外发光效果
+		ctx.shadowColor = 'rgba(76, 175, 80, 0.6)'
+		ctx.shadowBlur = 15
+		ctx.shadowOffsetX = 0
+		ctx.shadowOffsetY = 0
+		// 实线加粗
+		ctx.strokeStyle = '#4CAF50'
+		ctx.lineWidth = 5
+		ctx.setLineDash([])  // 实线
+		ctx.beginPath()
+		ctx.roundRect(bbox.minX - 15, bbox.minY - 15, bbox.maxX - bbox.minX + 30, bbox.maxY - bbox.minY + 30, 15)
+		ctx.stroke()
+		// 内部细线
+		ctx.strokeStyle = '#81C784'
+		ctx.lineWidth = 2
+		ctx.beginPath()
+		ctx.roundRect(bbox.minX - 12, bbox.minY - 12, bbox.maxX - bbox.minX + 24, bbox.maxY - bbox.minY + 24, 12)
+		ctx.stroke()
+		ctx.restore()
 	}
 
 	drawTreeInfo(ctx, tree, 0, 0, 1)
+	
+	// 绘制条幅
+	if (tree.banners && tree.banners.length > 0) {
+		drawBanners(ctx, tree.banners, tree.worldX, tree.worldY, cameraX, cameraY, zoom, dpr)
+	}
+	
 	ctx.restore()
+}
+
+export function drawBanners(
+	ctx: CanvasRenderingContext2D,
+	banners: BannerData[],
+	treeWorldX: number,
+	treeWorldY: number,
+	cameraX: number,
+	cameraY: number,
+	zoom: number,
+	dpr: number = 1
+): void {
+	const BANNER_COLORS: Record<string, string> = {
+		red: '#FF6B6B',
+		orange: '#FFA500',
+		yellow: '#FFD93D',
+		green: '#6BCB77',
+		blue: '#4D96FF',
+		purple: '#9B59B6',
+		pink: '#FF69B4',
+	}
+
+	const scale = zoom * dpr
+	const windTime = getWindTime()
+
+	banners.forEach((banner, index) => {
+		const color = BANNER_COLORS[banner.color] || BANNER_COLORS.red
+		// 计算条幅的屏幕位置
+		// banner.pos_x和pos_y是世界坐标，需要转换为屏幕坐标
+		const bannerWorldX = banner.pos_x !== undefined ? banner.pos_x : treeWorldX - 80 + index * 60
+		const bannerWorldY = banner.pos_y !== undefined ? banner.pos_y : treeWorldY - 200
+		
+		const screenX = (bannerWorldX - cameraX) * scale
+		const screenY = (bannerWorldY - cameraY) * scale
+
+		ctx.save()
+		ctx.translate(screenX, screenY)
+		
+		// 条幅晃动特效
+		const swayAngle = Math.sin(windTime * 2 + index * 0.5) * 0.05 // 微微晃动
+		ctx.rotate(swayAngle)
+		
+		// 条幅大小随缩放调整，但不要太小
+		const bannerScale = Math.max(0.5, Math.min(scale, 1.5))
+		ctx.scale(bannerScale, bannerScale)
+
+		// 绘制条幅背景（竖向条幅）
+		const bannerWidth = 60
+		const bannerHeight = 160
+		ctx.fillStyle = color
+		ctx.beginPath()
+		ctx.moveTo(-bannerWidth / 2, 0)
+		ctx.lineTo(bannerWidth / 2, 0)
+		ctx.lineTo(bannerWidth / 2, bannerHeight)
+		ctx.lineTo(0, bannerHeight + 20) // 燕尾
+		ctx.lineTo(-bannerWidth / 2, bannerHeight)
+		ctx.closePath()
+		ctx.fill()
+
+		// 绘制边框
+		ctx.strokeStyle = 'rgba(255,255,255,0.5)'
+		ctx.lineWidth = 2
+		ctx.stroke()
+
+		// 绘制文字（竖向排列，从上往下）
+		ctx.fillStyle = banner.text_color || '#fff'
+		ctx.font = `${banner.text_bold ? 'bold' : 'normal'} 24px sans-serif`
+		ctx.textAlign = 'center'
+		ctx.textBaseline = 'top'
+		const text = banner.content.length > 6 ? banner.content.slice(0, 6) + '…' : banner.content
+		const charSpacing = 26 // 字间距
+		const startY = 15 // 起始Y位置
+		for (let i = 0; i < text.length; i++) {
+			ctx.fillText(text[i], 0, startY + i * charSpacing)
+		}
+
+		ctx.restore()
+	})
 }
 
 function drawTrunk(
@@ -395,11 +625,15 @@ function drawAllBranches(
 	colors: { trunk: string; canopy: string; highlight: string },
 	treeType: string,
 	branchImg: HTMLImageElement | null,
-	leafImg: HTMLImageElement | null
+	leafImg: HTMLImageElement | null,
+	windOffset: number = 0
 ): void {
 	const sorted = [...branches].sort((a, b) => a.depth - b.depth)
 
 	for (const branch of sorted) {
+		// 计算摇摆偏移（越深层的树枝摇摆越大）
+		const branchSway = windOffset * (0.01 + branch.depth * 0.005)
+
 		if (branchImg && branchImg.complete && branchImg.naturalWidth > 0) {
 			const dx = branch.endX - branch.startX
 			const dy = branch.endY - branch.startY
@@ -408,7 +642,7 @@ function drawAllBranches(
 
 			ctx.save()
 			ctx.translate(branch.startX, branch.startY)
-			ctx.rotate(angle)
+			ctx.rotate(angle + branchSway)
 
 			const drawW = len
 			const drawH = branch.thickness * 2
@@ -417,8 +651,10 @@ function drawAllBranches(
 		} else {
 			ctx.save()
 			ctx.beginPath()
+			// 应用摇摆到终点坐标
+			const swayedEndX = branch.endX + branchSway * 20
 			ctx.moveTo(branch.startX, branch.startY)
-			ctx.lineTo(branch.endX, branch.endY)
+			ctx.lineTo(swayedEndX, branch.endY)
 			ctx.strokeStyle = branch.depth > 5 ? colors.trunk : colors.canopy
 			ctx.lineWidth = branch.thickness
 			ctx.lineCap = 'round'
@@ -429,7 +665,9 @@ function drawAllBranches(
 		for (const leaf of branch.leaves) {
 			ctx.save()
 			ctx.translate(leaf.x, leaf.y)
-			ctx.rotate(leaf.angle)
+			// 叶子有更明显的摇摆效果
+			const leafSway = windOffset * 0.3 + Math.sin(windTime * 2 + leaf.x * 0.1) * 0.1
+			ctx.rotate(leaf.angle + leafSway)
 			drawLeaf(ctx, leaf.size, colors, treeType, leafImg)
 			ctx.restore()
 		}
@@ -526,7 +764,7 @@ export function drawBackgroundOnCanvas(
 	canvasHeight: number,
 	dpr: number = 1
 ): void {
-	const bgImg = getImage(`${IMG_BASE}/bg.svg`)
+	const bgImg = getImage(`${IMG_BASE}/bg.png`)
 
 	if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
 		const imgW = bgImg.naturalWidth
@@ -587,7 +825,7 @@ export function formatCoolingTime(ms: number): string {
 }
 
 export function calculateInitialZoom(canvasW: number, canvasH: number): number {
-	const bgImg = getImage(`${IMG_BASE}/bg.svg`)
+	const bgImg = getImage(`${IMG_BASE}/bg.png`)
 	if (!bgImg || !bgImg.complete || bgImg.naturalWidth <= 0) {
 		return 1
 	}
@@ -603,4 +841,111 @@ export function calculateInitialZoom(canvasW: number, canvasH: number): number {
 	const roundedZoom = Math.ceil(minScale * 10) / 10
 
 	return Math.max(roundedZoom, 0.5)
+}
+
+// 小组贡献数据类型
+export interface GroupContribution {
+	group_id: number
+	group_name: string
+	group_avatar?: string
+	total_exp: number
+	action_count: number
+	rank: number
+}
+
+// 绘制小组贡献榜到Canvas（画面最左侧居中）
+export function drawGroupContributionPanel(
+	ctx: CanvasRenderingContext2D,
+	contributions: GroupContribution[],
+	canvasWidth: number,
+	canvasHeight: number,
+	dpr: number = 1
+): void {
+	const panelWidth = 200 * dpr
+	const panelX = 10 * dpr
+	const panelY = canvasHeight / 2 - 150 * dpr
+	const rowHeight = 50 * dpr
+
+	ctx.save()
+
+	// 绘制面板背景
+	ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
+	ctx.strokeStyle = '#4CAF50'
+	ctx.lineWidth = 2 * dpr
+	const panelHeight = Math.min(contributions.length * rowHeight + 60 * dpr, 400 * dpr)
+
+	// 绘制圆角矩形背景
+	ctx.beginPath()
+	ctx.roundRect(panelX, panelY, panelWidth, panelHeight, 12 * dpr)
+	ctx.fill()
+	ctx.stroke()
+
+	// 绘制标题
+	ctx.fillStyle = '#4CAF50'
+	ctx.font = `bold ${14 * dpr}px sans-serif`
+	ctx.textAlign = 'center'
+	ctx.textBaseline = 'top'
+	ctx.fillText('🏆 小组贡献榜', panelX + panelWidth / 2, panelY + 10 * dpr)
+
+	// 绘制分割线
+	ctx.strokeStyle = '#e0e0e0'
+	ctx.lineWidth = 1 * dpr
+	ctx.beginPath()
+	ctx.moveTo(panelX + 10 * dpr, panelY + 35 * dpr)
+	ctx.lineTo(panelX + panelWidth - 10 * dpr, panelY + 35 * dpr)
+	ctx.stroke()
+
+	// 绘制各小组数据
+	const startY = panelY + 45 * dpr
+	const maxItems = Math.floor((panelHeight - 60 * dpr) / rowHeight)
+
+	contributions.slice(0, maxItems).forEach((group, index) => {
+		const y = startY + index * rowHeight
+		const centerY = y + rowHeight / 2
+
+		// 前三名特殊背景
+		if (index < 3) {
+			ctx.fillStyle = index === 0 ? 'rgba(255, 215, 0, 0.15)' : index === 1 ? 'rgba(192, 192, 192, 0.15)' : 'rgba(205, 127, 50, 0.15)'
+			ctx.beginPath()
+			ctx.roundRect(panelX + 5 * dpr, y, panelWidth - 10 * dpr, rowHeight - 5 * dpr, 8 * dpr)
+			ctx.fill()
+		}
+
+		// 绘制排名图标
+		ctx.font = `${16 * dpr}px sans-serif`
+		ctx.textAlign = 'center'
+		ctx.textBaseline = 'middle'
+		if (index === 0) {
+			ctx.fillText('🥇', panelX + 20 * dpr, centerY)
+		} else if (index === 1) {
+			ctx.fillText('🥈', panelX + 20 * dpr, centerY)
+		} else if (index === 2) {
+			ctx.fillText('🥉', panelX + 20 * dpr, centerY)
+		} else {
+			ctx.fillStyle = '#666'
+			ctx.font = `bold ${12 * dpr}px sans-serif`
+			ctx.fillText(String(index + 1), panelX + 20 * dpr, centerY)
+		}
+
+		// 绘制小组名称
+		ctx.fillStyle = '#333'
+		ctx.font = `bold ${12 * dpr}px sans-serif`
+		ctx.textAlign = 'left'
+		ctx.textBaseline = 'middle'
+		const name = group.group_name.length > 6 ? group.group_name.slice(0, 6) + '...' : group.group_name
+		ctx.fillText(name, panelX + 40 * dpr, centerY - 6 * dpr)
+
+		// 绘制贡献值
+		ctx.fillStyle = '#4CAF50'
+		ctx.font = `bold ${11 * dpr}px sans-serif`
+		ctx.fillText(`+${group.total_exp}`, panelX + 40 * dpr, centerY + 10 * dpr)
+
+		// 绘制次数
+		ctx.fillStyle = '#999'
+		ctx.font = `${10 * dpr}px sans-serif`
+		ctx.textAlign = 'right'
+		ctx.fillText(`${group.action_count}次`, panelX + panelWidth - 15 * dpr, centerY)
+	})
+
+	ctx.restore()
 }

@@ -41,9 +41,8 @@ const request = <T = any>(options : UniApp.RequestOptions) : Promise<T> => {
 						uni.reLaunch({ url: '/pages/auth/login' })
 						reject(res.data)
 					} else {
-						uni.showToast({ title: res.data.msg || '请求失败', icon: 'none' })
-						reject(res.data)
-					}
+				reject(res.data)
+			}
 				} else if (res.statusCode === 401) {
 					uni.removeStorageSync('token')
 					uni.removeStorageSync('userInfo')
@@ -428,7 +427,7 @@ export const plantTree = (data: { class_id: number; tree_type: string; pos_x: nu
   return request({ url: '/stu/treeGame/plantTree', method: 'POST', data })
 }
 
-export const waterTree = (data: { tree_id: number; class_id: number }) => {
+export const waterTree = (data: { tree_id: number; class_id: number; group_id: number }) => {
   return request({ url: '/stu/treeGame/waterTree', method: 'POST', data })
 }
 
@@ -448,11 +447,11 @@ export const getFertilizerList = () => {
   return request({ url: '/stu/treeGame/getFertilizerList', method: 'GET' })
 }
 
-export const getTreeBanners = (treeId: number) => {
-  return request({ url: `/stu/treeGame/getTreeBanners?tree_id=${treeId}`, method: 'GET' })
+export const getTreeBanners = (classId: number) => {
+  return request({ url: `/stu/treeGame/getTreeBanners?class_id=${classId}`, method: 'GET' })
 }
 
-export const addBanner = (data: { tree_id: number; class_id: number; group_id: number; content: string; color?: string; banner_type?: string }) => {
+export const addBanner = (data: { tree_id: number; class_id: number; group_id: number; content: string; color?: string; banner_type?: string; pos_x?: number; pos_y?: number; text_color?: string; text_bold?: number }) => {
   return request({ url: '/stu/treeGame/addBanner', method: 'POST', data })
 }
 
@@ -466,4 +465,8 @@ export const grantToTreeBag = (data: { class_id: number; group_id: number; item_
 
 export const batchGrantToTreeBag = (data: { class_id: number; grants: Array<{ group_id: number; item_type: string; item_code: string; item_name: string; quantity: number }> }) => {
   return request({ url: '/stu/treeGame/batchGrantToBag', method: 'POST', data })
+}
+
+export const getGroupContributions = (classId: number) => {
+  return request({ url: `/stu/treeGame/getGroupContributions?class_id=${classId}`, method: 'GET' })
 }

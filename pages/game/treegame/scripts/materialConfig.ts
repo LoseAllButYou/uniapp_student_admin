@@ -4,7 +4,7 @@
  * 
  * 目录结构建议：
  * /web/static/game/tree/
- * ├── bg.svg                    背景
+ * ├── bg.png                    背景
  * ├── trunk/
  * │   ├── poplar-trunk.svg      杨树树干
  * │   ├── maple-trunk.svg       枫树树干
@@ -201,7 +201,7 @@ export function getMaterialKey(treeType: string, part: 'trunk' | 'branch' | 'lea
 export function getAllMaterialPaths(): string[] {
 	const paths: string[] = []
 	// 背景
-	paths.push(`${IMG_BASE}/bg.svg`)
+	paths.push(`${IMG_BASE}/bg.png`)
 
 	// 每种树的素材
 	for (const type in TREE_MATERIALS) {

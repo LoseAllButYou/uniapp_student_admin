@@ -49,8 +49,8 @@ const configDialogVisible = ref(false)
 const configGameKey = ref('')
 const currentGameId = ref(0)
 const loadingGame = ref('')
-const petGameRef = ref<PetGame>()
-const treeGameRef = ref<TreeGame>()
+const petGameRef = ref<InstanceType<typeof PetGame> | null>(null)
+const treeGameRef = ref<InstanceType<typeof TreeGame> | null>(null)
 
 // 监听子组件关闭游戏
 const handleGameClose = () => {

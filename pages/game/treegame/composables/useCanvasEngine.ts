@@ -1,12 +1,44 @@
 import { ref, Ref, onUnmounted } from 'vue'
 import { Camera, TreeData, TreeRenderData, WORLD_WIDTH, WORLD_HEIGHT, MIN_ZOOM, MAX_ZOOM, MIN_TREE_DISTANCE, BannerData, TreeConfig } from '../scripts/types'
-import { buildTreeRenderData, drawBackgroundOnCanvas, drawTreeOnCanvas, isPointNearTree, getImage, getImgSrc, calculateInitialZoom, IMG_BASE } from '../scripts/treeResources'
+import { buildTreeRenderData, drawBackgroundOnCanvas, drawTreeOnCanvas, isPointNearTree, getImage, getImgSrc, calculateInitialZoom, IMG_BASE, MIN_TREE_DISTANCE_X, drawGroupContributionPanel, GroupContribution, updateWindTime, getWindTime, drawBanners } from '../scripts/treeResources'
 import { TREE_PANEL_CONFIG, TREE_SIZE_CONFIG } from '../scripts/resourceConfig'
+
+// 条幅面板配置
+const BANNER_PANEL_CONFIG = {
+	bgColor: 'rgba(0,0,0,0.7)',
+	borderRadius: 12,
+	padding: 10,
+	cardWidth: 70,
+	cardHeight: 90,
+	cardGap: 10,
+	panelWidth: 90,
+}
+
+// 条幅颜色配置
+const BANNER_COLORS: Record<string, { color: string; name: string }> = {
+	red: { color: '#FF6B6B', name: '红色' },
+	orange: { color: '#FFA500', name: '橙色' },
+	yellow: { color: '#FFD93D', name: '黄色' },
+	green: { color: '#6BCB77', name: '绿色' },
+	blue: { color: '#4D96FF', name: '蓝色' },
+	purple: { color: '#9B59B6', name: '紫色' },
+	pink: { color: '#FF69B4', name: '粉色' },
+}
+
+export interface BannerDragData {
+	color: string
+	content: string
+	worldX: number
+	worldY: number
+	screenX: number
+	screenY: number
+}
 
 export function useCanvasEngine(
 	treesData: Ref<TreeData[]>,
 	selectedTreeId: Ref<number | null>,
-	treeConfigs: Ref<TreeConfig[]>
+	treeConfigs: Ref<TreeConfig[]>,
+	independentBanners?: Ref<BannerData[]>
 ) {
 	const camera = ref<Camera>({ x: 0, y: 0, zoom: 1 })
 	const canvasEl = ref<HTMLCanvasElement | null>(null)
@@ -27,7 +59,17 @@ export function useCanvasEngine(
 	const isDraggingPlant = ref(false)
 	const plantPreviewBounced = ref(false)
 
+	// 条幅选择面板相关
+	const showBannerPanel = ref(true) // 默认显示条幅面板
+	const isDraggingBanner = ref(false)
+	const dragBannerData = ref<BannerDragData | null>(null)
+	const bannerPanelCollapsed = ref(true) // 默认收起
+	const selectedBannerColor = ref<string | null>(null) // 选中的条幅颜色
+	const isBannerPlacing = ref(false) // 是否正在选择条幅位置
+
 	const showTreePanel = ref(true)
+	const showGroupPanel = ref(true)
+	const groupContributions = ref<GroupContribution[]>([])
 	const panelCards: { type: string; name: string; unlocked: boolean; hint: string; icon: string; lockedIcon: string }[] = []
 
 	let dragStartX = 0
@@ -80,7 +122,7 @@ export function useCanvasEngine(
 				unlocked,
 				hint: unlocked ? tc.description : hint,
 				icon: icon && icon.complete ? getImgSrc(tc.tree_type) : '',
-				lockedIcon: unlocked ? '' : '🔒',
+				lockedIcon: unlocked ? '' : '',
 			})
 		}
 		calcPanelMetrics()
@@ -202,9 +244,174 @@ export function useCanvasEngine(
 		ctx.restore()
 	}
 
+	// 绘制条幅选择面板（顶部居中，从上而下布局）
+	const drawBannerPanel = () => {
+		if (!ctx || !showBannerPanel.value) return
+		const cfg = BANNER_PANEL_CONFIG
+		const colors = Object.keys(BANNER_COLORS)
+
+		// 从上而下布局
+		const panelWidth = colors.length * 55 * dpr + 20 * dpr
+		const panelHeight = bannerPanelCollapsed.value ? 40 * dpr : 100 * dpr
+		const panelX = (canvasW * dpr - panelWidth) / 2
+		const panelY = 10 * dpr
+
+		ctx.save()
+
+		// 绘制面板背景
+		ctx.fillStyle = cfg.bgColor
+		ctx.beginPath()
+		ctx.roundRect(panelX, panelY, panelWidth, panelHeight, cfg.borderRadius * dpr)
+		ctx.fill()
+
+		// 绘制标题栏
+		ctx.fillStyle = '#fff'
+		ctx.font = `bold ${12 * dpr}px sans-serif`
+		ctx.textAlign = 'center'
+		ctx.textBaseline = 'top'
+		ctx.fillText('🎌 条幅', panelX + panelWidth / 2, panelY + 8 * dpr)
+
+		// 展开时显示颜色选项（从左到右排列）
+		if (!bannerPanelCollapsed.value) {
+			const startX = panelX + 15 * dpr
+			const startY = panelY + 35 * dpr
+			const cardW = 45 * dpr
+			const cardH = 50 * dpr
+			const gap = 10 * dpr
+
+			colors.forEach((key, index) => {
+				const x = startX + index * (cardW + gap)
+				const colorInfo = BANNER_COLORS[key]
+
+				// 高亮选中的颜色
+				if (selectedBannerColor.value === key) {
+					ctx.strokeStyle = '#fff'
+					ctx.lineWidth = 3 * dpr
+					ctx.beginPath()
+					ctx.roundRect(x - 2 * dpr, startY - 2 * dpr, cardW + 4 * dpr, cardH + 4 * dpr, 8 * dpr)
+					ctx.stroke()
+				}
+
+				// 绘制条幅预览
+				ctx.fillStyle = colorInfo.color
+				ctx.beginPath()
+				ctx.roundRect(x, startY, cardW, cardH, 6 * dpr)
+				ctx.fill()
+
+				// 绘制颜色名称
+				ctx.fillStyle = '#fff'
+				ctx.font = `bold ${11 * dpr}px sans-serif`
+				ctx.textAlign = 'center'
+				ctx.textBaseline = 'middle'
+				ctx.fillText(colorInfo.name, x + cardW / 2, startY + cardH / 2)
+			})
+		}
+
+		// 收缩/展开按钮
+		ctx.fillStyle = '#fff'
+		ctx.font = `${12 * dpr}px sans-serif`
+		ctx.textAlign = 'right'
+		ctx.fillText(bannerPanelCollapsed.value ? '▼' : '▲', panelX + panelWidth - 10 * dpr, panelY + 10 * dpr)
+
+		ctx.restore()
+	}
+
+	// 检测点击是否在条幅面板上
+	const isOnBannerPanel = (sx: number, sy: number): boolean => {
+		if (!showBannerPanel.value) return false
+		const colors = Object.keys(BANNER_COLORS)
+		const panelWidth = colors.length * 55 + 20
+		const panelHeight = bannerPanelCollapsed.value ? 40 : 100
+		const panelX = (canvasW - panelWidth) / 2
+		const panelY = 10
+
+		return sx >= panelX && sx <= panelX + panelWidth &&
+			sy >= panelY && sy <= panelY + panelHeight
+	}
+
+	// 获取条幅面板上点击的颜色
+	const getBannerColorAt = (sx: number, sy: number): string | null => {
+		if (!showBannerPanel.value || bannerPanelCollapsed.value) return null
+		const colors = Object.keys(BANNER_COLORS)
+		const panelWidth = colors.length * 55 + 20
+		const panelX = (canvasW - panelWidth) / 2
+		const panelY = 10
+		const startX = panelX + 15
+		const startY = panelY + 35
+		const cardW = 45
+		const cardH = 50
+		const gap = 10
+
+		for (let i = 0; i < colors.length; i++) {
+			const x = startX + i * (cardW + gap)
+			if (sx >= x && sx <= x + cardW && sy >= startY && sy <= startY + cardH) {
+				return colors[i]
+			}
+		}
+		return null
+	}
+
+	// 开始拖拽条幅
+	const startDragBanner = (color: string) => {
+		isDraggingBanner.value = true
+		dragBannerData.value = {
+			color,
+			content: '',
+			worldX: 0,
+			worldY: 0,
+			screenX: 0,
+			screenY: 0,
+		}
+	}
+
+	// 取消拖拽条幅
+	const cancelDragBanner = () => {
+		isDraggingBanner.value = false
+		dragBannerData.value = null
+	}
+
+	// 绘制拖拽中的条幅预览
+	const drawDragBannerPreview = () => {
+		if (!ctx || !isDraggingBanner.value || !dragBannerData.value) return
+
+		const { screenX, screenY, color } = dragBannerData.value
+		const colorInfo = BANNER_COLORS[color] || BANNER_COLORS.red
+
+		ctx.save()
+		ctx.translate(screenX * dpr, screenY * dpr)
+
+		// 绘制条幅形状
+		const bannerWidth = 80 * dpr
+		const bannerHeight = 35 * dpr
+		ctx.fillStyle = colorInfo.color
+		ctx.globalAlpha = 0.8
+		ctx.beginPath()
+		ctx.moveTo(-bannerWidth / 2, 0)
+		ctx.lineTo(bannerWidth / 2, 0)
+		ctx.lineTo(bannerWidth / 2, bannerHeight)
+		ctx.lineTo(0, bannerHeight + 10 * dpr)
+		ctx.lineTo(-bannerWidth / 2, bannerHeight)
+		ctx.closePath()
+		ctx.fill()
+
+		// 提示文字
+		ctx.globalAlpha = 1
+		ctx.fillStyle = '#fff'
+		ctx.font = `bold ${12 * dpr}px sans-serif`
+		ctx.textAlign = 'center'
+		ctx.textBaseline = 'middle'
+		ctx.fillText('松开放置', 0, bannerHeight / 2)
+
+		ctx.restore()
+	}
+
 	const render = () => {
 		if (!ctx) return
 		const { x: cx, y: cy, zoom } = camera.value
+
+		// 更新随风摇摆时间
+		updateWindTime(0.016) // 约60fps
+		const windOffset = Math.sin(getWindTime() * 0.5) * 0.5 // -0.5 到 0.5 的摇摆
 
 		ctx.clearRect(0, 0, canvasW * dpr, canvasH * dpr)
 		drawBackgroundOnCanvas(ctx, cx, cy, zoom, canvasW, canvasH, dpr)
@@ -212,17 +419,35 @@ export function useCanvasEngine(
 		const sorted = [...treeRenderList.value].sort((a, b) => a.worldY - b.worldY)
 		for (const tree of sorted) {
 			const selected = treesData.value.find(t => t.pos_x === tree.worldX && t.pos_y === tree.worldY)?.id === selectedTreeId.value
-			drawTreeOnCanvas(ctx, tree, cx, cy, zoom, !!selected, dpr)
+			// 传入windOffset实现随风摇摆效果
+			drawTreeOnCanvas(ctx, tree, cx, cy, zoom, !!selected, dpr, windOffset)
 		}
+
+		// 绘制小组贡献榜（在最上层，树木之后绘制）
+		console.log('render check - showGroupPanel:', showGroupPanel.value, 'contributions:', groupContributions.value.length)
+		if (showGroupPanel.value && groupContributions.value.length > 0) {
+			drawGroupContributionPanel(ctx, groupContributions.value, canvasW * dpr, canvasH * dpr, dpr)
+		}
+
+		// 绘制独立条幅（tree_id为0的条幅）
+		if (independentBanners && independentBanners.value && independentBanners.value.length > 0) {
+			drawBanners(ctx, independentBanners.value, 0, 0, cx, cy, zoom, dpr)
+		}
+
+		// 绘制条幅选择面板（右侧）
+		drawBannerPanel()
+
+		// 绘制拖拽中的条幅预览
+		drawDragBannerPreview()
 
 		if (isDraggingPlant.value && dragPlantTreeType.value) {
 			const px = (dragPlantWorldX.value - cx) * zoom * dpr
 			const py = (dragPlantWorldY.value - cy) * zoom * dpr
 
+			// 使用X轴距离检测（350px）
 			const tooClose = treeRenderList.value.some(t => {
-				const dx = dragPlantWorldX.value - t.worldX
-				const dy = dragPlantWorldY.value - t.worldY
-				return Math.sqrt(dx * dx + dy * dy) < MIN_TREE_DISTANCE
+				const dx = Math.abs(dragPlantWorldX.value - t.worldX)
+				return dx < MIN_TREE_DISTANCE_X
 			})
 			dragPlantTooClose.value = tooClose
 			dragPlantValid.value = !tooClose
@@ -315,6 +540,18 @@ export function useCanvasEngine(
 		return { left: 0, top: 0, width: canvasW || 800, height: canvasH || 600 }
 	}
 
+	// 获取条幅位置（返回屏幕坐标和世界坐标）
+	const getBannerClickPos = (e: MouseEvent): { sx: number; sy: number; wx: number; wy: number } | null => {
+		const rect = getRect()
+		if (!rect) return null
+
+		const sx = e.clientX - rect.left
+		const sy = e.clientY - rect.top
+
+		const world = screenToWorld(sx, sy)
+		return { sx, sy, wx: world.x, wy: world.y }
+	}
+
 	const getRealCanvas = (): HTMLCanvasElement | null => {
 		const el = canvasEl.value
 		if (!el) return null
@@ -363,7 +600,7 @@ export function useCanvasEngine(
 
 		resizeCanvas()
 
-		const bgImg = getImage(`${IMG_BASE}/bg.svg`)
+		const bgImg = getImage(`${IMG_BASE}/bg.png`)
 		if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
 			worldW = bgImg.naturalWidth
 			worldH = bgImg.naturalHeight
@@ -395,6 +632,33 @@ export function useCanvasEngine(
 		const sx = e.clientX - rect.left
 		const sy = e.clientY - rect.top
 
+		// 检测条幅面板点击
+		if (showBannerPanel.value && isOnBannerPanel(sx, sy)) {
+			const colors = Object.keys(BANNER_COLORS)
+			const panelWidth = colors.length * 55 + 20
+			const panelX = (canvasW - panelWidth) / 2
+			const panelY = 10
+
+			// 点击展开/收起按钮（右上角区域）
+			if (sx >= panelX + panelWidth - 30 && sx <= panelX + panelWidth && sy >= panelY && sy <= panelY + 25) {
+				bannerPanelCollapsed.value = !bannerPanelCollapsed.value
+				return
+			}
+
+			// 点击颜色卡片，选中颜色（不立即拖拽）
+			const color = getBannerColorAt(sx, sy)
+			if (color) {
+				selectedBannerColor.value = color
+				isBannerPlacing.value = true
+			}
+			return
+		}
+
+		// 如果正在选择条幅位置，点击画面位置时触发确认
+		if (isBannerPlacing.value && selectedBannerColor.value) {
+			// 这里不处理，让 onCanvasClick 处理
+		}
+
 		if (showTreePanel.value && isOnPanel(sx, sy)) {
 			const idx = getCardIndexAt(sx)
 			if (idx >= 0 && !isCardLocked(idx)) {
@@ -415,6 +679,20 @@ export function useCanvasEngine(
 	}
 
 	const onMouseMove = (e: MouseEvent) => {
+		// 条幅拖拽
+		if (isDraggingBanner.value && dragBannerData.value) {
+			const rect = getRect()
+			if (!rect) return
+			const sx = e.clientX - rect.left
+			const sy = e.clientY - rect.top
+			const world = screenToWorld(sx, sy)
+			dragBannerData.value.screenX = sx
+			dragBannerData.value.screenY = sy
+			dragBannerData.value.worldX = world.x
+			dragBannerData.value.worldY = world.y
+			return
+		}
+
 		if (isDraggingPlant.value) {
 			const rect = getRect()
 			if (!rect) return
@@ -446,6 +724,9 @@ export function useCanvasEngine(
 	}
 
 	const onMouseUp = (e: MouseEvent) => {
+		// 条幅拖拽结束 - 不在这里处理，让外部组件处理
+		// 通过 confirmBannerPlacement 或 cancelDragBanner 来处理
+
 		if (panelDragging) {
 			const rect = getRect()
 			if (rect) {
@@ -461,6 +742,19 @@ export function useCanvasEngine(
 			panelDragging = false
 		}
 		isDragging.value = false
+	}
+
+	// 确认条幅放置（返回世界坐标和颜色）
+	const confirmBannerPlacement = (): { x: number; y: number; color: string } | null => {
+		if (!isDraggingBanner.value || !dragBannerData.value) return null
+		const result = {
+			x: Math.round(dragBannerData.value.worldX),
+			y: Math.round(dragBannerData.value.worldY),
+			color: dragBannerData.value.color,
+		}
+		isDraggingBanner.value = false
+		dragBannerData.value = null
+		return result
 	}
 
 	const onWheel = (e: WheelEvent) => {
@@ -483,13 +777,25 @@ export function useCanvasEngine(
 		clampCamera()
 	}
 
-	const onCanvasClick = (e: MouseEvent): { type: 'tree' | 'ground' | 'none'; treeId?: number; worldX?: number; worldY?: number } => {
+	const onCanvasClick = (e: MouseEvent): { type: 'tree' | 'ground' | 'banner' | 'none'; treeId?: number; worldX?: number; worldY?: number; bannerColor?: string } => {
 		if (hasDragged) return { type: 'none' }
 		const rect = getRect()
 		if (!rect) return { type: 'none' }
 		const sx = e.clientX - rect.left
 		const sy = e.clientY - rect.top
+
+		// 如果在条幅面板上点击，不处理
+		if (isOnBannerPanel(sx, sy)) return { type: 'none' }
+
 		const world = screenToWorld(sx, sy)
+
+		// 如果正在选择条幅位置，返回条幅放置信息
+		if (isBannerPlacing.value && selectedBannerColor.value) {
+			const color = selectedBannerColor.value
+			// 重置状态
+			isBannerPlacing.value = false
+			return { type: 'banner', worldX: Math.round(world.x), worldY: Math.round(world.y), bannerColor: color }
+		}
 
 		if (isPlantMode.value) {
 			const tooClose = treeRenderList.value.some(t => {
@@ -569,6 +875,13 @@ export function useCanvasEngine(
 		updatePanelCards()
 	}
 
+	// 设置小组贡献榜数据
+	const setGroupContributions = (data: GroupContribution[]) => {
+		console.log('setGroupContributions called with:', data.length, 'items')
+		groupContributions.value = data
+		console.log('groupContributions.value updated:', groupContributions.value.length, 'items')
+	}
+
 	onUnmounted(() => {
 		stopRender()
 		if (wheelBound) {
@@ -598,13 +911,26 @@ export function useCanvasEngine(
 		isDraggingPlant,
 		plantPreviewBounced,
 		showTreePanel,
+		showGroupPanel,
+		groupContributions,
 		panelCards,
+		// 条幅相关
+		showBannerPanel,
+		bannerPanelCollapsed,
+		isDraggingBanner,
+		dragBannerData,
+		selectedBannerColor,
+		isBannerPlacing,
+		startDragBanner,
+		cancelDragBanner,
+		confirmBannerPlacement,
 		initCanvas,
 		resizeCanvas,
 		startRender,
 		stopRender,
 		rebuildRenderList,
 		refreshPanel,
+		setGroupContributions,
 		screenToWorld,
 		onMouseDown,
 		onMouseMove,

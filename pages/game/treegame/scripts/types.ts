@@ -27,6 +27,10 @@ export interface BannerData {
 	banner_type: string
 	color: string
 	status: number
+	pos_x?: number
+	pos_y?: number
+	text_color?: string
+	text_bold?: number
 }
 
 export interface FertilizerItem {
