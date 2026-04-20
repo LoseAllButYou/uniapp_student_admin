@@ -13,11 +13,44 @@
 				<span class="logo-text">{{ isCollapse ? '' : '班级积分管理系统' }}</span>
 			</div>
 			<div class="header-right">
-				<el-button type="text" @click="restorePetGame" :class="{'pet-game-active': petGameMinimized}">
-					<el-icon>
-						<Promotion />
-					</el-icon> <span v-if="petGameMinimized">返回宠物乐园</span><span v-else>游戏</span>
-				</el-button>
+				<!-- 只有一个游戏最小化时显示单按钮 -->
+				<template v-if="minimizedGameCount === 1">
+					<el-button type="text" @click="restoreSingleGame" class="game-btn">
+						<el-icon>
+							<Promotion v-if="petGameMinimized" />
+							<Promotion v-else />
+						</el-icon> {{ getRestoreGameText() }}
+					</el-button>
+				</template>
+				<!-- 多个游戏最小化时显示下拉菜单 -->
+				<template v-else-if="minimizedGameCount > 1">
+					<el-dropdown trigger="click" @visible-change="gameDropdownVisible = $event" :visible="gameDropdownVisible">
+						<el-button type="text" class="game-dropdown-btn">
+							<el-icon>
+								<Promotion />
+							</el-icon> 返回游戏+
+							<el-icon><ArrowDown /></el-icon>
+						</el-button>
+						<template #dropdown>
+							<el-dropdown-menu>
+								<el-dropdown-item v-if="petGameMinimized" @click="restorePetGame">
+									<el-icon><Promotion /></el-icon> 返回宠物乐园
+								</el-dropdown-item>
+								<el-dropdown-item v-if="treeGameMinimized" @click="restoreTreeGame">
+									<el-icon><Promotion /></el-icon> 返回种树游戏
+								</el-dropdown-item>
+							</el-dropdown-menu>
+						</template>
+					</el-dropdown>
+				</template>
+				<!-- 没有游戏最小化时显示普通游戏按钮 -->
+				<template v-else>
+					<el-button type="text" @click="goToGameCenter" class="game-btn">
+						<el-icon>
+							<Promotion />
+						</el-icon> 游戏
+					</el-button>
+				</template>
 				<el-button type="text" @click="showTeacherInfo">
 					<el-icon>
 						<User />
@@ -159,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, reactive, onMounted, watch } from 'vue'
+	import { ref, reactive, onMounted, onUnmounted, watch, computed } from 'vue'
 	import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
 	import GroupScore from '@/pages/score/groupScore.vue'
 	import rank from '@/pages/rank/rank.vue'
@@ -174,6 +207,78 @@
 	const activeMenu = ref('student')
 	const isCollapse = ref(false)
 	const petGameMinimized = ref(false)
+	const treeGameMinimized = ref(false)
+	// 游戏下拉菜单状态
+	const gameDropdownVisible = ref(false)
+
+	// 计算游戏按钮状态
+	const gameButtonText = computed(() => {
+		if (petGameMinimized.value && treeGameMinimized.value) {
+			return '返回游戏'
+		} else if (petGameMinimized.value) {
+			return '返回宠物乐园'
+		} else if (treeGameMinimized.value) {
+			return '返回种树游戏'
+		} else {
+			return '游戏'
+		}
+	})
+
+	// 计算是否有最小化的游戏
+	const hasMinimizedGame = computed(() => petGameMinimized.value || treeGameMinimized.value)
+
+	// 计算最小化的游戏数量
+	const minimizedGameCount = computed(() => {
+		let count = 0
+		if (petGameMinimized.value) count++
+		if (treeGameMinimized.value) count++
+		return count
+	})
+
+	// 获取要恢复的游戏ID
+	const getRestoreGameType = () => {
+		if (petGameMinimized.value) return 'pet'
+		if (treeGameMinimized.value) return 'tree'
+		return ''
+	}
+
+	// 获取恢复游戏的文字
+	const getRestoreGameText = () => {
+		if (petGameMinimized.value) return '返回宠物乐园'
+		if (treeGameMinimized.value) return '返回种树游戏'
+		return '游戏'
+	}
+
+	// 恢复游戏（单个游戏直接恢复）
+	const restoreSingleGame = () => {
+		gameDropdownVisible.value = false
+		activeMenu.value = 'game'
+		const gameType = getRestoreGameType()
+		if (gameType) {
+			GameCenterRef.value?.enterGame(gameType)
+		}
+	}
+
+	// 恢复宠物游戏
+	const restorePetGame = () => {
+		petGameMinimized.value = false
+		activeMenu.value = 'game'
+		gameDropdownVisible.value = false
+		GameCenterRef.value?.enterGame('pet')
+	}
+
+	// 恢复种树游戏
+	const restoreTreeGame = () => {
+		treeGameMinimized.value = false
+		activeMenu.value = 'game'
+		gameDropdownVisible.value = false
+		GameCenterRef.value?.enterGame('tree')
+	}
+
+	// 前往游戏中心
+	const goToGameCenter = () => {
+		activeMenu.value = 'game'
+	}
 
 	// 用户信息（扩展班级列表、教师ID、学校ID）
 	const teacherInfo = ref({
@@ -458,16 +563,29 @@
 
 	}
 
-	const handlePetGameMinimize = () => {
-		petGameMinimized.value = true
+	// 处理游戏最小化事件
+	const handlePetGameMinimize = (gameKey: string, minimized: boolean) => {
+		console.log('handlePetGameMinimize', gameKey, minimized)
+		if (gameKey === 'pet') {
+			petGameMinimized.value = minimized
+		} else if (gameKey === 'tree') {
+			treeGameMinimized.value = minimized
+		}
+		if (minimized) {
+			activeMenu.value = 'student'
+		} else {
+			activeMenu.value = 'game'
+		}
 	}
 
-	const restorePetGame = () => {
-		petGameMinimized.value = false
-		activeMenu.value = 'game'
+	// 切换游戏下拉菜单
+	const toggleGameDropdown = () => {
+		gameDropdownVisible.value = !gameDropdownVisible.value
+	}
 
-		console.log(GameCenterRef.value.enterGame)
-		GameCenterRef.value?.enterGame('')
+	// 点击外部关闭下拉菜单
+	const closeGameDropdown = () => {
+		gameDropdownVisible.value = false
 	}
 
 	// 收缩/展开菜单
@@ -503,6 +621,23 @@
 				activeMenu.value = 'game'
 			}
 		})
+
+		// 监听种树游戏最小化事件
+		uni.$on('treeGameMinimized', (minimized: boolean) => {
+			if (minimized) {
+				treeGameMinimized.value = true
+				activeMenu.value = 'student'
+			} else {
+				treeGameMinimized.value = false
+				activeMenu.value = 'game'
+			}
+		})
+	})
+
+	onUnmounted(() => {
+		// 清理事件监听器，防止内存泄漏
+		uni.$off('petGameMinimized')
+		uni.$off('treeGameMinimized')
 	})
 </script>
 

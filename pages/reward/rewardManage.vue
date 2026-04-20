@@ -72,6 +72,13 @@
 						<el-option label="种树游戏" :value="2" />
 					</el-select>
 				</el-form-item>
+				<el-form-item v-if="isGameType" label="道具类型" prop="item_type">
+					<el-select v-model="form.item_type" placeholder="请选择道具类型" style="width: 100%">
+						<el-option v-if="form.game_id === 1" label="食物" value="food" />
+						<el-option v-if="form.game_id === 1" label="玩具" value="toy" />
+						<el-option v-if="form.game_id === 2" label="肥料" value="fertilizer" />
+					</el-select>
+				</el-form-item>
 				<el-form-item label="奖品名称" prop="name">
 				<el-input v-model="form.name" placeholder="请输入奖品名称" />
 			</el-form-item>
@@ -125,7 +132,7 @@
 					<div v-for="cfg in GAME_ITEM_CONFIGS" :key="cfg.key" class="type-select-card" :class="{selected: selectedImportType === cfg.key}" @click="selectImportType(cfg.key)">
 						<div class="type-icon">{{ cfg.icon }}</div>
 						<div class="type-label">{{ cfg.label }}</div>
-						<div class="type-desc">类型{{ cfg.type }} · {{ cfg.effectLabel }}+{{ cfg.itemType === 'food' ? '食物' : '玩具' }}</div>
+						<div class="type-desc">分类{{ cfg.itemCategory }} · {{ cfg.effectLabel }}+{{ cfg.itemType === 'food' ? '食物' : cfg.itemType === 'toy' ? '玩具' : '肥料' }}</div>
 					</div>
 				</div>
 			</div>
@@ -139,9 +146,9 @@
 					<div class="game-items-grid">
 						<div v-for="item in gameItems" :key="item.id" class="game-item-card" :class="{selected: selectedGameItems.includes(item.id)}" @click="toggleGameItem(item.id)">
 							<el-checkbox :model-value="selectedGameItems.includes(item.id)" @click.stop @change="toggleGameItem(item.id)" />
-							<div class="game-item-name">{{ currentImportConfig?.itemType === 'food' ? item.food_name : item.toy_name }}</div>
+							<div class="game-item-name">{{ currentImportConfig?.itemType === 'fertilizer' ? item.item_name : currentImportConfig?.itemType === 'food' ? item.food_name : item.toy_name }}</div>
 							<div class="game-item-effect">
-								{{ currentImportConfig?.effectLabel }}+{{ currentImportConfig?.itemType === 'food' ? item.energy_add : item.mood_add }}
+								{{ currentImportConfig?.effectLabel }}+{{ currentImportConfig?.itemType === 'fertilizer' ? item.exp_add : currentImportConfig?.itemType === 'food' ? item.energy_add : item.mood_add }}
 							</div>
 							<el-tag size="small" :type="item.rarity === 'epic' ? 'danger' : item.rarity === 'rare' ? 'warning' : 'info'">
 								{{ item.rarity === 'epic' ? '史诗' : item.rarity === 'rare' ? '稀有' : '普通' }}
@@ -168,8 +175,14 @@
 			<!-- 步骤3：确认导入 -->
 			<div v-if="importStep === 2" class="import-step">
 				<el-form :model="importForm" :rules="importRules" ref="importFormRef" label-width="100px">
-					<el-form-item label="商品类型">
-						<el-tag type="success">{{ currentImportConfig?.label }} (类型{{ currentImportConfig?.type }})</el-tag>
+					<el-form-item label="奖品类型" prop="type">
+						<el-select v-model="importForm.type" placeholder="请选择奖品类型" style="width: 100%">
+							<el-option label="小组奖励（总积分排名发放）" :value="3" />
+							<el-option label="小组周奖（当周积分排名发放）" :value="4" />
+						</el-select>
+					</el-form-item>
+					<el-form-item label="物品分类">
+						<el-tag type="info">{{ currentImportConfig?.label }} (分类{{ currentImportConfig?.itemCategory }})</el-tag>
 					</el-form-item>
 					<el-form-item label="所属游戏">
 						<el-tag type="primary">{{ currentImportConfig?.gameId === 1 ? '宠物乐园' : '种树游戏' }}</el-tag>
@@ -217,7 +230,7 @@
 	import { ref, computed, onMounted } from 'vue'
 	import { ElMessage, ElMessageBox } from 'element-plus'
 	import { Plus } from '@element-plus/icons-vue'
-	import { getRewardList, addReward, editReward, deleteReward, getPetFoodList, getPetToyList } from '@/api/request'
+	import { getRewardList, addReward, editReward, deleteReward, getPetFoodList, getPetToyList, getFertilizerList } from '@/api/request'
 	import { useClassData } from '@/api/useClassData'
 	import { GAME_ITEM_CONFIGS } from './gameItemConfig'
 
@@ -235,6 +248,7 @@
 		stu_class_id: null,
 		type: 1,
 		game_id: 1,
+		item_type: '',
 		name: '',
 		code: '',
 		points: 10,
@@ -309,6 +323,7 @@ const openEditDialog = (item: any) => {
 		stu_class_id: item.stu_class_id,
 		type: item.type,
 		game_id: item.game_id || (isGameType.value ? 1 : 0),
+		item_type: item.item_type || '',
 		name: item.name,
 		code: item.code || '',
 		points: item.points,
@@ -331,6 +346,7 @@ const resetForm = () => {
 		stu_class_id: currentClass.value?.id,
 		type: 1,
 		game_id: 1,
+		item_type: '',
 		name: '',
 		code: code,
 		points: 10,
@@ -423,9 +439,10 @@ const isGameType = computed(() => {
 	const gameItemsLoading = ref(false)
 	const importLoading = ref(false)
 	const importFormRef = ref()
-	const importForm = ref({ points: 10, stock: 99 })
+	const importForm = ref({ type: 3, points: 10, stock: 99 })
 	const itemImages = ref<Record<number, string>>({})
 	const importRules = {
+		type: [{ required: true, message: '请选择奖品类型', trigger: 'change' }],
 		points: [{ required: true, message: '请输入默认积分', trigger: 'blur' }],
 		stock: [{ required: true, message: '请输入默认库存', trigger: 'blur' }],
 	}
@@ -439,12 +456,30 @@ const isGameType = computed(() => {
 		if (!cfg) return []
 		return gameItems.value
 			.filter(item => selectedGameItems.value.includes(item.id))
-			.map(item => ({
-				id: item.id,
-				name: cfg.itemType === 'food' ? item.food_name : item.toy_name,
-				code: cfg.itemType === 'food' ? item.food_code : item.toy_code,
-				description: `${cfg.effectLabel}+${cfg.itemType === 'food' ? item.energy_add : item.mood_add} | 稀有度:${item.rarity || '普通'}`,
-			}))
+			.map(item => {
+				let name: string
+				let code: string
+				let effectVal: number
+				if (cfg.itemType === 'fertilizer') {
+					name = item.item_name
+					code = item.item_code
+					effectVal = item.exp_add
+				} else if (cfg.itemType === 'food') {
+					name = item.food_name
+					code = item.food_code
+					effectVal = item.energy_add
+				} else {
+					name = item.toy_name
+					code = item.toy_code
+					effectVal = item.mood_add
+				}
+				return {
+					id: item.id,
+					name,
+					code,
+					description: `${cfg.effectLabel}+${effectVal} | 稀有度:${item.rarity || '普通'}`,
+				}
+			})
 	})
 
 	const openGameImportDialog = () => {
@@ -452,7 +487,7 @@ const isGameType = computed(() => {
 		selectedImportType.value = ''
 		gameItems.value = []
 		selectedGameItems.value = []
-		importForm.value = { points: 10, stock: 99 }
+		importForm.value = { type: 3, points: 10, stock: 99 }
 		itemImages.value = {}
 		gameImportVisible.value = true
 	}
@@ -469,21 +504,34 @@ const isGameType = computed(() => {
 			gameItemsLoading.value = true
 			try {
 				const cfg = currentImportConfig.value!
-				
+
 				// 获取已配置的奖品列表
 				const rewardRes = await getRewardList({ class_id: currentClass.value?.id })
 				const existingRewards = rewardRes.code === 1 ? rewardRes.data : []
 				const existingNames = existingRewards
-					.filter((r: any) => r.type === cfg.type)
+					.filter((r: any) => r.game_id === cfg.gameId)
 					.map((r: any) => r.name)
 
 				// 获取游戏商品列表
-				const apiFn = cfg.itemType === 'food' ? getPetFoodList : getPetToyList
-				const res = await apiFn()
+				let res: any
+				if (cfg.itemType === 'fertilizer') {
+					res = await getFertilizerList()
+				} else if (cfg.itemType === 'food') {
+					res = await getPetFoodList()
+				} else {
+					res = await getPetToyList()
+				}
 				if (res.code === 1) {
 					// 过滤掉已配置的商品
 					gameItems.value = res.data.filter((item: any) => {
-						const itemName = cfg.itemType === 'food' ? item.food_name : item.toy_name
+						let itemName: string
+						if (cfg.itemType === 'fertilizer') {
+							itemName = item.item_name
+						} else if (cfg.itemType === 'food') {
+							itemName = item.food_name
+						} else {
+							itemName = item.toy_name
+						}
 						return !existingNames.includes(itemName)
 					})
 					selectedGameItems.value = []
@@ -533,14 +581,28 @@ const isGameType = computed(() => {
 			const items = gameItems.value.filter(item => selectedGameItems.value.includes(item.id))
 
 			for (const item of items) {
-				const name = cfg.itemType === 'food' ? item.food_name : item.toy_name
-				const effectVal = cfg.itemType === 'food' ? item.energy_add : item.mood_add
-				const code = cfg.itemType === 'food' ? item.food_code : item.toy_code
+				let name: string
+				let effectVal: number
+				let code: string
+				if (cfg.itemType === 'fertilizer') {
+					name = item.item_name
+					effectVal = item.exp_add
+					code = item.item_code
+				} else if (cfg.itemType === 'food') {
+					name = item.food_name
+					effectVal = item.energy_add
+					code = item.food_code
+				} else {
+					name = item.toy_name
+					effectVal = item.mood_add
+					code = item.toy_code
+				}
 				try {
 					const res = await addReward({
 						stu_class_id: currentClass.value!.id,
-						type: cfg.type,
+						type: importForm.value.type,
 						game_id: cfg.gameId,
+						item_type: cfg.itemType,
 						code: code,
 						name: name,
 						points: importForm.value.points,

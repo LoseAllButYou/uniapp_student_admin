@@ -49,6 +49,10 @@ export function getEggImgSrc(): string {
 	return `${PET_SVG_BASE}/egg.svg`
 }
 
+export function getBgFarmSrc(): string {
+	return `${PET_SVG_BASE}/bg_farm.svg`
+}
+
 export function getPetImgHTML(type: string, stage: number): string {
 	const s = getStageScale(stage)
 	const w = Math.round(120 * s)
@@ -57,4 +61,69 @@ export function getPetImgHTML(type: string, stage: number): string {
 
 export function getEggImgHTML(size: number = 70): string {
 	return `<img src="${getEggImgSrc()}" style="width:${size}px; height:auto; object-fit:contain; image-rendering:auto;" />`
+}
+
+const petImageCache: Record<string, HTMLImageElement> = {}
+let petImagesLoaded = false
+let petImagesLoading = false
+const petImageLoadCallbacks: ((progress: number) => void)[] = []
+
+export function preloadAllPetImages(onProgress?: (progress: number) => void): Promise<void> {
+	if (petImagesLoaded) {
+		onProgress?.(100)
+		return Promise.resolve()
+	}
+	if (petImagesLoading) {
+		if (onProgress) petImageLoadCallbacks.push(onProgress)
+		return new Promise(resolve => {
+			petImageLoadCallbacks.push(() => { resolve() })
+		})
+	}
+
+	petImagesLoading = true
+
+	const petCodes = ['pig', 'dog', 'chicken', 'duck', 'sheep', 'cat', 'rabbit', 'cow', 'horse', 'panda']
+	const toLoad: string[] = [
+		getBgFarmSrc(),
+		getEggImgSrc(),
+		...petCodes.map(code => getPetImgSrc(code))
+	]
+
+	const uniquePaths = [...new Set(toLoad.filter(p => p))]
+	let loaded = 0
+	const total = uniquePaths.length
+
+	const notifyProgress = (path: string) => {
+		loaded++
+		const progress = Math.round((loaded / total) * 100)
+		onProgress?.(progress)
+		petImageLoadCallbacks.forEach(cb => cb(progress))
+	}
+
+	return new Promise(resolve => {
+		for (const path of uniquePaths) {
+			const img = new Image()
+			img.onload = () => {
+				petImageCache[path] = img
+				notifyProgress(path)
+				if (loaded >= total) {
+					petImagesLoaded = true
+					petImagesLoading = false
+					petImageLoadCallbacks.length = 0
+					resolve()
+				}
+			}
+			img.onerror = () => {
+				console.warn(`Failed to load pet image: ${path}`)
+				notifyProgress(path)
+				if (loaded >= total) {
+					petImagesLoaded = true
+					petImagesLoading = false
+					petImageLoadCallbacks.length = 0
+					resolve()
+				}
+			}
+			img.src = path
+		}
+	})
 }

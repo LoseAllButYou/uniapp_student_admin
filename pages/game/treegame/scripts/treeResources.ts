@@ -1,6 +1,6 @@
 import { TreeRenderData, BannerData, BANNER_COLORS } from './types'
-import { IMG_BASE, TREE_MATERIALS } from './materialConfig'
-export { IMG_BASE } from './materialConfig'
+import { IMG_BASE, TREE_MATERIALS, BG_MATERIALS, BG_CONFIG, getBgMaterialPath } from './materialConfig'
+export { IMG_BASE, BG_CONFIG } from './materialConfig'
 
 export const WATER_COOLING_MS = 30 * 60 * 1000
 
@@ -49,31 +49,48 @@ export interface TreeBranch {
 const imageCache: Record<string, HTMLImageElement> = {}
 let imagesLoaded = false
 let imagesLoading = false
-const imageLoadCallbacks: (() => void)[] = []
+const imageLoadCallbacks: ((progress: number) => void)[] = []
 
-export function preloadAllImages(): Promise<void> {
-	if (imagesLoaded) return Promise.resolve()
+export function preloadAllImages(onProgress?: (progress: number) => void): Promise<void> {
+	if (imagesLoaded) {
+		onProgress?.(100)
+		return Promise.resolve()
+	}
 	if (imagesLoading) {
-		return new Promise(resolve => imageLoadCallbacks.push(resolve))
+		if (onProgress) imageLoadCallbacks.push(onProgress)
+		return new Promise(resolve => {
+			imageLoadCallbacks.push(() => { resolve() })
+		})
 	}
 
 	imagesLoading = true
-	const toLoad: string[] = [`${IMG_BASE}/bg.png`]
+	const toLoad: string[] = []
+	// 背景素材
+	for (const key in BG_MATERIALS) {
+		toLoad.push(BG_MATERIALS[key as keyof typeof BG_MATERIALS].path)
+	}
+	// 树木素材
 	for (const type in TREE_MATERIALS) {
 		const mat = TREE_MATERIALS[type]
 		toLoad.push(mat.trunk, mat.branch, mat.leaf, mat.treeIcon)
 	}
 
 	const uniquePaths = [...new Set(toLoad.filter(p => p))]
+	const total = uniquePaths.length
 	let loaded = 0
+
+	const notifyProgress = (path: string) => {
+		loaded++
+		const progress = Math.round((loaded / total) * 100)
+		onProgress?.(progress)
+		imageLoadCallbacks.forEach(cb => cb(progress))
+	}
 
 	return new Promise(resolve => {
 		const checkDone = () => {
-			loaded++
-			if (loaded >= uniquePaths.length) {
+			if (loaded >= total) {
 				imagesLoaded = true
 				imagesLoading = false
-				imageLoadCallbacks.forEach(cb => cb())
 				imageLoadCallbacks.length = 0
 				resolve()
 			}
@@ -83,10 +100,12 @@ export function preloadAllImages(): Promise<void> {
 			const img = new Image()
 			img.onload = () => {
 				console.log(`素材加载成功: ${path}`)
+				notifyProgress(path)
 				checkDone()
 			}
 			img.onerror = () => {
 				console.warn(`素材加载失败: ${path}`)
+				notifyProgress(path)
 				checkDone()
 			}
 			img.src = path
@@ -130,6 +149,259 @@ export function getTreeColors(treeType: string): { trunk: string; canopy: string
 	const mat = TREE_MATERIALS[treeType]
 	if (!mat) return { trunk: '#8B6914', canopy: '#2E7D32', highlight: '#81C784' }
 	return { trunk: mat.trunkColor, canopy: mat.leafColor, highlight: mat.leafHighlight }
+}
+
+/**
+ * 绘制平铺背景素材（用于地面和天空的平铺绘制）
+ * @param ctx Canvas上下文
+ * @param img 素材图片
+ * @param screenX 屏幕X坐标
+ * @param screenY 屏幕Y坐标
+ * @param tileWidth 单个平铺的宽度
+ * @param tileHeight 单个平铺的高度
+ * @param totalWidth 总绘制宽度
+ * @param totalHeight 总绘制高度
+ */
+function drawTiledBackground(
+	ctx: CanvasRenderingContext2D,
+	img: HTMLImageElement,
+	screenX: number,
+	screenY: number,
+	tileWidth: number,
+	tileHeight: number,
+	totalWidth: number,
+	totalHeight: number
+) {
+	if (!img || !img.complete || img.naturalWidth === 0) return
+
+	let x = screenX
+	while (x < screenX + totalWidth) {
+		let y = screenY
+		while (y < screenY + totalHeight) {
+			ctx.drawImage(img, x, y, tileWidth, tileHeight)
+			y += tileHeight
+		}
+		x += tileWidth
+	}
+}
+
+/**
+ * 背景元素随机数据
+ */
+export interface BgElements {
+	clouds: Array<{ x: number; y: number; scale: number }>
+	stones: Array<{ x: number; y: number; scale: number; rotation: number }>
+	weeds: Array<{ x: number; y: number; scale: number; rotation: number }>
+}
+
+let bgElements: BgElements | null = null
+
+/**
+ * 种子随机数生成器（用于背景元素）
+ */
+function seededRandomBg(seed: number): () => number {
+	let s = seed
+	return () => {
+		s = Math.sin(s * 9999) * 10000
+		return s - Math.floor(s)
+	}
+}
+
+/**
+ * 初始化背景元素（随机生成云、石块、杂草的位置）
+ */
+export function initBackgroundElements(seed?: number) {
+	const random = seed !== undefined ? seededRandomBg(seed) : Math.random
+	const { worldWidth, worldHeight, skyRatio, cloudCountMin, cloudCountMax, stoneCountMin, stoneCountMax, weedCountMin, weedCountMax } = BG_CONFIG
+	const groundY = Math.floor(worldHeight * skyRatio)
+
+	bgElements = {
+		clouds: [],
+		stones: [],
+		weeds: [],
+	}
+
+	// 生成云朵（在天空中随机分布）
+	const skyHeight = groundY
+	const cloudCount = Math.floor(random() * (cloudCountMax - cloudCountMin + 1)) + cloudCountMin
+	for (let i = 0; i < cloudCount; i++) {
+		bgElements.clouds.push({
+			x: random() * worldWidth,
+			y: random() * skyHeight,
+			scale: 0.5 + random() * 0.8,
+		})
+	}
+
+	// 生成石块（在地面上随机分布）
+	const groundHeight = worldHeight - groundY
+	const stoneCount = Math.floor(random() * (stoneCountMax - stoneCountMin + 1)) + stoneCountMin
+	for (let i = 0; i < stoneCount; i++) {
+		bgElements.stones.push({
+			x: random() * worldWidth,
+			y: groundY + random() * groundHeight,
+			scale: 0.6 + random() * 0.6,
+			rotation: (random() - 0.5) * 0.3,
+		})
+	}
+
+	// 生成杂草（在地面上随机分布）
+	const weedCount = Math.floor(random() * (weedCountMax - weedCountMin + 1)) + weedCountMin
+	for (let i = 0; i < weedCount; i++) {
+		bgElements.weeds.push({
+			x: random() * worldWidth,
+			y: groundY + random() * groundHeight,
+			scale: 0.4 + random() * 0.5,
+			rotation: (random() - 0.5) * 0.2,
+		})
+	}
+}
+
+/**
+ * 获取背景元素数据
+ */
+export function getBackgroundElements(): BgElements {
+	if (!bgElements) {
+		initBackgroundElements()
+	}
+	return bgElements!
+}
+
+/**
+ * 绘制背景
+ * @param ctx Canvas上下文
+ * @param cameraX 相机X偏移（世界坐标原点到屏幕的偏移）
+ * @param cameraY 相机Y偏移
+ * @param scale 缩放比例
+ * @param canvasWidth Canvas宽度
+ * @param canvasHeight Canvas高度
+ */
+export function drawBackground(
+	ctx: CanvasRenderingContext2D,
+	cameraX: number,
+	cameraY: number,
+	scale: number,
+	canvasWidth: number,
+	canvasHeight: number
+) {
+	const { worldWidth, worldHeight, groundY } = BG_CONFIG
+
+	// 绘制天空（屏幕范围：0 到 groundY）
+	const skyScreenHeight = groundY * scale
+	if (skyScreenHeight > 0) {
+		const skyImg = getImage(getBgMaterialPath('sky'))
+		if (skyImg && skyImg.complete) {
+			// 天空从屏幕顶部开始，宽度填满
+			const tileWidth = skyImg.naturalWidth * scale
+			const tileHeight = skyImg.naturalHeight * scale
+			// 计算天空需要覆盖的屏幕区域
+			const skyStartY = 0
+			const skyEndY = Math.min(skyScreenHeight, canvasHeight)
+			drawTiledBackground(
+				ctx,
+				skyImg,
+				0,                    // screenX
+				skyStartY,            // screenY
+				tileWidth,            // 单个平铺宽度
+				tileHeight,           // 单个平铺高度
+				canvasWidth,          // 总宽度
+				skyEndY - skyStartY   // 总高度
+			)
+		}
+	}
+
+	// 绘制地面（屏幕范围：groundY 到 worldHeight）
+	const groundScreenY = groundY * scale
+	if (groundScreenY < canvasHeight) {
+		const groundImg = getImage(getBgMaterialPath('ground'))
+		if (groundImg && groundImg.complete) {
+			const tileWidth = groundImg.naturalWidth * scale
+			const tileHeight = groundImg.naturalHeight * scale
+			// 地面从 groundY * scale 开始
+			const groundStartY = Math.max(0, groundScreenY)
+			const groundEndY = canvasHeight
+			drawTiledBackground(
+				ctx,
+				groundImg,
+				0,                        // screenX
+				groundStartY,              // screenY
+				tileWidth,                // 单个平铺宽度
+				tileHeight,               // 单个平铺高度
+				canvasWidth,              // 总宽度
+				groundEndY - groundStartY // 总高度
+			)
+		}
+	}
+
+	// 绘制太阳（世界坐标 80%, 15%，转换到屏幕坐标）
+	const sunImg = getImage(getBgMaterialPath('sun'))
+	if (sunImg && sunImg.complete) {
+		const sunWorldX = worldWidth * 0.8
+		const sunWorldY = worldHeight * 0.15
+		const sunScreenX = (sunWorldX + cameraX) * scale
+		const sunScreenY = (sunWorldY + cameraY) * scale
+		const sunSize = Math.min(sunImg.naturalWidth, sunImg.naturalHeight) * 0.15 * scale
+		ctx.drawImage(sunImg, sunScreenX - sunSize / 2, sunScreenY - sunSize / 2, sunSize, sunSize)
+	}
+
+	// 绘制云朵
+	const cloudImg = getImage(getBgMaterialPath('cloud'))
+	if (cloudImg && cloudImg.complete && bgElements) {
+		for (const cloud of bgElements.clouds) {
+			// 世界坐标转屏幕坐标：screenX = worldX + cameraX
+			const screenX = (cloud.x + cameraX) * scale
+			const screenY = (cloud.y + cameraY) * scale
+			if (screenX < -200 || screenX > canvasWidth + 200) continue
+			if (screenY < -200 || screenY > canvasHeight + 200) continue
+			const cloudWidth = cloudImg.naturalWidth * cloud.scale * scale
+			const cloudHeight = cloudImg.naturalHeight * cloud.scale * scale
+			ctx.drawImage(cloudImg, screenX - cloudWidth / 2, screenY - cloudHeight / 2, cloudWidth, cloudHeight)
+		}
+	}
+
+	// 绘制石块
+	const stoneImg = getImage(getBgMaterialPath('stone'))
+	if (stoneImg && stoneImg.complete && bgElements) {
+		for (const stone of bgElements.stones) {
+			const screenX = (stone.x + cameraX) * scale
+			const screenY = (stone.y + cameraY) * scale
+			if (screenX < -100 || screenX > canvasWidth + 100) continue
+			if (screenY < -100 || screenY > canvasHeight + 100) continue
+			ctx.save()
+			ctx.translate(screenX, screenY)
+			ctx.rotate(stone.rotation)
+			const stoneSize = stoneImg.naturalWidth * stone.scale * scale
+			ctx.drawImage(stoneImg, -stoneSize / 2, -stoneSize / 2, stoneSize, stoneSize * 0.7)
+			ctx.restore()
+		}
+	}
+
+	// 绘制杂草
+	const weedImg = getImage(getBgMaterialPath('weed'))
+	if (weedImg && weedImg.complete && bgElements) {
+		for (const weed of bgElements.weeds) {
+			const screenX = (weed.x + cameraX) * scale
+			const screenY = (weed.y + cameraY) * scale
+			if (screenX < -50 || screenX > canvasWidth + 50) continue
+			if (screenY < -50 || screenY > canvasHeight + 50) continue
+			ctx.save()
+			ctx.translate(screenX, screenY)
+			ctx.rotate(weed.rotation)
+			const weedSize = weedImg.naturalWidth * weed.scale * scale * 0.8
+			ctx.drawImage(weedImg, -weedSize / 2, -weedSize, weedSize, weedSize * 1.5)
+			ctx.restore()
+		}
+	}
+}
+
+/**
+ * 种子随机数生成器（用于树木绘制）
+ */
+function seededRandomForTree(seed: number): () => number {
+	let s = seed
+	return () => {
+		s = (s * 16807) % 2147483647
+		return (s - 1) / 2147483646
+	}
 }
 
 export function getLevelExp(level: number): number {
@@ -176,14 +448,6 @@ const TREE_CONFIG = {
 	baseLeafSize: 10,
 }
 
-function seededRandom(seed: number): () => number {
-	let s = seed
-	return () => {
-		s = (s * 16807) % 2147483647
-		return (s - 1) / 2147483646
-	}
-}
-
 function getBranchStartRatio(level: number): number {
 	return 1 / 2
 }
@@ -223,7 +487,7 @@ function generateTreeBranchesFractal(level: number, trunkHeight: number): TreeBr
 	const maxDepth = getMaxDepth(level)
 	// 使用随机种子，让每次生成的树样式不同
 	const randomSeed = Math.floor(Math.random() * 10000)
-	const rng = seededRandom(level * 137 + 42 + randomSeed)
+	const rng = seededRandomForTree(level * 137 + 42 + randomSeed)
 
 	const mainBranchLength = trunkHeight * (2 / 3) * (0.8 + level * 0.05)
 	const mainBranchThickness = TREE_CONFIG.baseTrunkWidth * (1 + level * 0.1)
@@ -445,16 +709,14 @@ export function getWindTime(): number {
 export function drawTreeOnCanvas(
 	ctx: CanvasRenderingContext2D,
 	tree: TreeRenderData,
-	cameraX: number,
-	cameraY: number,
-	zoom: number,
 	selected: boolean,
 	dpr: number = 1,
 	windOffset: number = 0
 ): void {
-	const sx = (tree.worldX - cameraX) * zoom * dpr
-	const sy = (tree.worldY - cameraY) * zoom * dpr
-	const scale = zoom * dpr
+	// 树木在世界坐标系中的位置
+	const sx = tree.worldX
+	const sy = tree.worldY
+	const scale = 1 // 缩放由外部ctx.scale控制
 
 	const colors = getTreeColors(tree.treeType)
 	const trunkImg = getImageByType(tree.treeType, 'trunk')
@@ -502,23 +764,20 @@ export function drawTreeOnCanvas(
 	}
 
 	drawTreeInfo(ctx, tree, 0, 0, 1)
-	
-	// 绘制条幅
+
+	// 绘制条幅（位置相对于树木）
 	if (tree.banners && tree.banners.length > 0) {
-		drawBanners(ctx, tree.banners, tree.worldX, tree.worldY, cameraX, cameraY, zoom, dpr)
+		drawBanners(ctx, tree.banners, tree.worldX, tree.worldY, dpr)
 	}
-	
+
 	ctx.restore()
 }
 
 export function drawBanners(
 	ctx: CanvasRenderingContext2D,
 	banners: BannerData[],
-	treeWorldX: number,
-	treeWorldY: number,
-	cameraX: number,
-	cameraY: number,
-	zoom: number,
+	treeWorldX: number = 0,
+	treeWorldY: number = 0,
 	dpr: number = 1
 ): void {
 	const BANNER_COLORS: Record<string, string> = {
@@ -531,28 +790,27 @@ export function drawBanners(
 		pink: '#FF69B4',
 	}
 
-	const scale = zoom * dpr
+	const scale = dpr
 	const windTime = getWindTime()
 
 	banners.forEach((banner, index) => {
 		const color = BANNER_COLORS[banner.color] || BANNER_COLORS.red
-		// 计算条幅的屏幕位置
-		// banner.pos_x和pos_y是世界坐标，需要转换为屏幕坐标
+		// 条幅在世界坐标系中的位置（已应用外部scale）
 		const bannerWorldX = banner.pos_x !== undefined ? banner.pos_x : treeWorldX - 80 + index * 60
 		const bannerWorldY = banner.pos_y !== undefined ? banner.pos_y : treeWorldY - 200
-		
-		const screenX = (bannerWorldX - cameraX) * scale
-		const screenY = (bannerWorldY - cameraY) * scale
+
+		const sx = bannerWorldX * dpr
+		const sy = bannerWorldY * dpr
 
 		ctx.save()
-		ctx.translate(screenX, screenY)
-		
+		ctx.translate(sx, sy)
+
 		// 条幅晃动特效
-		const swayAngle = Math.sin(windTime * 2 + index * 0.5) * 0.05 // 微微晃动
+		const swayAngle = Math.sin(windTime * 2 + index * 0.5) * 0.05
 		ctx.rotate(swayAngle)
-		
-		// 条幅大小随缩放调整，但不要太小
-		const bannerScale = Math.max(0.5, Math.min(scale, 1.5))
+
+		// 条幅大小随dpr调整
+		const bannerScale = dpr
 		ctx.scale(bannerScale, bannerScale)
 
 		// 绘制条幅背景（竖向条幅）
@@ -757,53 +1015,95 @@ function darkenColor(hex: string, amount: number): string {
 
 export function drawBackgroundOnCanvas(
 	ctx: CanvasRenderingContext2D,
-	cameraX: number,
-	cameraY: number,
-	zoom: number,
 	canvasWidth: number,
 	canvasHeight: number,
 	dpr: number = 1
 ): void {
-	const bgImg = getImage(`${IMG_BASE}/bg.png`)
+	const { worldWidth, worldHeight, skyRatio, decorationSize } = BG_CONFIG
+	const groundY = worldHeight * skyRatio
 
-	if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
-		const imgW = bgImg.naturalWidth
-		const imgH = bgImg.naturalHeight
+	// 1. 绘制天空和地面（拉伸填满整个世界画面，比例3:2）
+	const skyImg = getImage(getBgMaterialPath('sky'))
+	const groundImg = getImage(getBgMaterialPath('ground'))
 
-		const viewLeft = cameraX
-		const viewTop = cameraY
-		const viewRight = cameraX + canvasWidth / zoom
-		const viewBottom = cameraY + canvasHeight / zoom
+	if (skyImg && skyImg.complete) {
+		ctx.drawImage(skyImg, 0, 0, worldWidth, groundY)
+	}
 
-		const startCol = Math.floor(viewLeft / imgW)
-		const startRow = Math.floor(viewTop / imgH)
-		const endCol = Math.ceil(viewRight / imgW)
-		const endRow = Math.ceil(viewBottom / imgH)
+	if (groundImg && groundImg.complete) {
+		ctx.drawImage(groundImg, 0, groundY, worldWidth, worldHeight - groundY)
+	}
 
-		ctx.save()
-		for (let row = startRow; row < endRow; row++) {
-			for (let col = startCol; col < endCol; col++) {
-				const worldX = col * imgW
-				const worldY = row * imgH
-				const screenX = (worldX - cameraX) * zoom * dpr
-				const screenY = (worldY - cameraY) * zoom * dpr
-				const drawW = imgW * zoom * dpr
-				const drawH = imgH * zoom * dpr
-				ctx.drawImage(bgImg, screenX, screenY, drawW, drawH)
-			}
-		}
-		ctx.restore()
-	} else {
-		ctx.save()
-		ctx.scale(dpr, dpr)
-		const grd = ctx.createLinearGradient(0, 0, 0, canvasHeight)
+	// 备用渐变
+	if ((!skyImg || !skyImg.complete) && (!groundImg || !groundImg.complete)) {
+		const grd = ctx.createLinearGradient(0, 0, 0, worldHeight)
 		grd.addColorStop(0, '#87CEEB')
-		grd.addColorStop(0.4, '#B8D4E3')
-		grd.addColorStop(0.7, '#F4E4C1')
-		grd.addColorStop(1, '#D4A373')
+		grd.addColorStop(skyRatio, '#B8D4E3')
+		grd.addColorStop(skyRatio, '#D4A373')
+		grd.addColorStop(1, '#C4A484')
 		ctx.fillStyle = grd
-		ctx.fillRect(0, 0, canvasWidth, canvasHeight)
-		ctx.restore()
+		ctx.fillRect(0, 0, worldWidth, worldHeight)
+	}
+
+	// 2. 绘制太阳（固定在世界坐标右上角）
+	const sunImg = getImage(getBgMaterialPath('sun'))
+	if (sunImg && sunImg.complete) {
+		const sunSize = Math.min(sunImg.naturalWidth, sunImg.naturalHeight) * 0.15
+		const sunX = worldWidth * 0.8 - sunSize / 2
+		const sunY = groundY * 0.3
+		ctx.drawImage(sunImg, sunX, sunY, sunSize, sunSize)
+	}
+
+	// 3. 绘制云朵（均匀分布在天空区域）
+	getBackgroundElements()
+	const cloudImg = getImage(getBgMaterialPath('cloud'))
+	if (cloudImg && cloudImg.complete && bgElements) {
+		const cloudCount = bgElements.clouds.length
+		const spacing = worldWidth / (cloudCount + 1)
+		for (let i = 0; i < cloudCount; i++) {
+			const cloud = bgElements.clouds[i]
+			const x = spacing * (i + 1)
+			const y = cloud.y
+			const cloudW = cloudImg.naturalWidth * 0.5
+			const cloudH = cloudImg.naturalHeight * 0.5
+			ctx.drawImage(cloudImg, x - cloudW / 2, y - cloudH / 2, cloudW, cloudH)
+		}
+	}
+
+	// 4. 绘制石块（均匀分布在地面区域，200x200）
+	const stoneImg = getImage(getBgMaterialPath('stone'))
+	if (stoneImg && stoneImg.complete && bgElements) {
+		const stoneCount = bgElements.stones.length
+		const spacing = worldWidth / (stoneCount + 1)
+		const size = decorationSize
+		for (let i = 0; i < stoneCount; i++) {
+			const stone = bgElements.stones[i]
+			const x = spacing * (i + 1)
+			const y = stone.y
+			ctx.save()
+			ctx.translate(x, y)
+			ctx.rotate(stone.rotation)
+			ctx.drawImage(stoneImg, -size / 2, -size / 2, size, size)
+			ctx.restore()
+		}
+	}
+
+	// 5. 绘制杂草（均匀分布在地面区域，200x200）
+	const weedImg = getImage(getBgMaterialPath('weed'))
+	if (weedImg && weedImg.complete && bgElements) {
+		const weedCount = bgElements.weeds.length
+		const spacing = worldWidth / (weedCount + 1)
+		const size = decorationSize
+		for (let i = 0; i < weedCount; i++) {
+			const weed = bgElements.weeds[i]
+			const x = spacing * (i + 1) + spacing * 0.5
+			const y = weed.y
+			ctx.save()
+			ctx.translate(x, y)
+			ctx.rotate(weed.rotation)
+			ctx.drawImage(weedImg, -size / 2, -size, size, size * 1.5)
+			ctx.restore()
+		}
 	}
 }
 
@@ -863,8 +1163,7 @@ export function drawGroupContributionPanel(
 ): void {
 	const panelWidth = 200 * dpr
 	const panelX = 10 * dpr
-	const panelY = canvasHeight / 2 - 150 * dpr
-	const rowHeight = 50 * dpr
+	const rowHeight = 45 * dpr
 
 	ctx.save()
 
@@ -872,7 +1171,9 @@ export function drawGroupContributionPanel(
 	ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
 	ctx.strokeStyle = '#4CAF50'
 	ctx.lineWidth = 2 * dpr
-	const panelHeight = Math.min(contributions.length * rowHeight + 60 * dpr, 400 * dpr)
+	// 高度动态计算，确保能显示所有小组
+	const panelHeight = Math.min(contributions.length * rowHeight + 60 * dpr, 500 * dpr)
+	const panelY = canvasHeight / 2 - panelHeight / 2
 
 	// 绘制圆角矩形背景
 	ctx.beginPath()
@@ -897,7 +1198,7 @@ export function drawGroupContributionPanel(
 
 	// 绘制各小组数据
 	const startY = panelY + 45 * dpr
-	const maxItems = Math.floor((panelHeight - 60 * dpr) / rowHeight)
+	const maxItems = contributions.length
 
 	contributions.slice(0, maxItems).forEach((group, index) => {
 		const y = startY + index * rowHeight
@@ -907,24 +1208,24 @@ export function drawGroupContributionPanel(
 		if (index < 3) {
 			ctx.fillStyle = index === 0 ? 'rgba(255, 215, 0, 0.15)' : index === 1 ? 'rgba(192, 192, 192, 0.15)' : 'rgba(205, 127, 50, 0.15)'
 			ctx.beginPath()
-			ctx.roundRect(panelX + 5 * dpr, y, panelWidth - 10 * dpr, rowHeight - 5 * dpr, 8 * dpr)
+			ctx.roundRect(panelX + 5 * dpr, y, panelWidth - 10 * dpr, rowHeight - 3 * dpr, 6 * dpr)
 			ctx.fill()
 		}
 
 		// 绘制排名图标
-		ctx.font = `${16 * dpr}px sans-serif`
+		ctx.font = `${14 * dpr}px sans-serif`
 		ctx.textAlign = 'center'
 		ctx.textBaseline = 'middle'
 		if (index === 0) {
-			ctx.fillText('🥇', panelX + 20 * dpr, centerY)
+			ctx.fillText('🥇', panelX + 18 * dpr, centerY)
 		} else if (index === 1) {
-			ctx.fillText('🥈', panelX + 20 * dpr, centerY)
+			ctx.fillText('🥈', panelX + 18 * dpr, centerY)
 		} else if (index === 2) {
-			ctx.fillText('🥉', panelX + 20 * dpr, centerY)
+			ctx.fillText('🥉', panelX + 18 * dpr, centerY)
 		} else {
 			ctx.fillStyle = '#666'
-			ctx.font = `bold ${12 * dpr}px sans-serif`
-			ctx.fillText(String(index + 1), panelX + 20 * dpr, centerY)
+			ctx.font = `bold ${11 * dpr}px sans-serif`
+			ctx.fillText(String(index + 1), panelX + 18 * dpr, centerY)
 		}
 
 		// 绘制小组名称
@@ -932,19 +1233,26 @@ export function drawGroupContributionPanel(
 		ctx.font = `bold ${12 * dpr}px sans-serif`
 		ctx.textAlign = 'left'
 		ctx.textBaseline = 'middle'
-		const name = group.group_name.length > 6 ? group.group_name.slice(0, 6) + '...' : group.group_name
-		ctx.fillText(name, panelX + 40 * dpr, centerY - 6 * dpr)
+		const name = group.group_name.length > 6 ? group.group_name.slice(0, 6) + '..' : group.group_name
+		ctx.fillText(name, panelX + 35 * dpr, centerY)
 
-		// 绘制贡献值
+		// 绘制贡献值（合并显示：+50贡献值）
 		ctx.fillStyle = '#4CAF50'
-		ctx.font = `bold ${11 * dpr}px sans-serif`
-		ctx.fillText(`+${group.total_exp}`, panelX + 40 * dpr, centerY + 10 * dpr)
+		ctx.font = `bold ${12 * dpr}px sans-serif`
+		ctx.textAlign = 'right'
+		const expText = `+${group.total_exp}`
+		const labelText = '贡献值'
+		const expWidth = ctx.measureText(expText).width
+		ctx.fillText(expText, panelX + panelWidth - 50 * dpr, centerY)
+		ctx.fillStyle = '#999'
+		ctx.font = `${10 * dpr}px sans-serif`
+		ctx.fillText(labelText, panelX + panelWidth - 10 * dpr, centerY)
 
 		// 绘制次数
 		ctx.fillStyle = '#999'
-		ctx.font = `${10 * dpr}px sans-serif`
-		ctx.textAlign = 'right'
-		ctx.fillText(`${group.action_count}次`, panelX + panelWidth - 15 * dpr, centerY)
+		ctx.font = `${9 * dpr}px sans-serif`
+		ctx.textAlign = 'left'
+		ctx.fillText(`${group.action_count}次`, panelX + 35 * dpr, centerY + 14 * dpr)
 	})
 
 	ctx.restore()

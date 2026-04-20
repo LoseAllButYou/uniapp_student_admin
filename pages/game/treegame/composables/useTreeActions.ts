@@ -9,6 +9,7 @@ export function useTreeActions(
 	banners: Ref<BannerData[]>,
 	classId: Ref<number>,
 	refreshTrees: () => Promise<void>,
+	refreshGroupContributions: () => Promise<void> = async () => {},
 	getGroupId: () => number = () => 0
 ) {
 	const loading = ref(false)
@@ -143,16 +144,53 @@ export function useTreeActions(
 		const tree = selectedTree()
 		if (!tree) return
 		fertilizing.value = true
+		let totalExpAdd = 0
+		let totalGroups = 0
 		try {
-			const res = await batchFertilize({
-				tree_id: tree.id, class_id: classId.value, group_id: getGroupId()
-			})
-			if (res.code === 1) {
-				ElMessage.success(`一键施肥成功！总经验 +${res.data.total_exp_add}`)
-				if (res.data.is_level_up === 1) ElMessage.success(`恭喜！树木升到 ${res.data.level_after} 级`)
+			// 获取所有小组的背包数据
+			const bagRes = await getTreeBag(classId.value, 0)
+			if (bagRes.code !== 1 || !bagRes.data?.fertilizers?.length) {
+				ElMessage.warning('所有小组的肥料背包均为空')
+				return
+			}
+
+			// 按小组分组肥料
+			const groupFertilizers: Record<number, any[]> = {}
+			for (const fert of bagRes.data.fertilizers) {
+				const gid = fert.group_id || 0
+				if (!groupFertilizers[gid]) groupFertilizers[gid] = []
+				groupFertilizers[gid].push(fert)
+			}
+
+			// 依次对每个小组使用肥料
+			for (const [groupId, fertilizers] of Object.entries(groupFertilizers)) {
+				if (fertilizers.length === 0) continue
+				const gid = Number(groupId)
+
+				// 调用后端批量施肥接口，会写入每种肥料的使用日志到数据库
+				const res = await batchFertilize({
+					tree_id: tree.id,
+					class_id: classId.value,
+					group_id: gid
+				})
+
+				if (res.code === 1) {
+					totalExpAdd += res.data.total_exp_add || 0
+					totalGroups++
+					// 每组施肥后更新贡献榜
+					await refreshGroupContributions()
+				} else {
+					console.warn(`小组${gid}施肥失败:`, res.msg)
+				}
+			}
+
+			if (totalGroups > 0) {
+				ElMessage.success(`一键施肥完成！共使用 ${totalGroups} 个小组的肥料，总经验 +${totalExpAdd}`)
 				fertilizeVisible.value = false
 				await refreshTrees()
-			} else { ElMessage.error(res.msg || '施肥失败') }
+			} else {
+				ElMessage.error('所有小组施肥均失败')
+			}
 		} catch (e: any) {
 			ElMessage.error(e?.msg || e?.message || '一键施肥失败')
 		}

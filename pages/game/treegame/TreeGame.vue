@@ -65,7 +65,6 @@
 						<div class="detail-actions">
 						<el-button type="primary" @click="openWater" round>💧 浇水</el-button>
 						<el-button type="warning" @click="openFertilize" round>🌿 施肥</el-button>
-						<el-button v-if="currentTree.level >= 3" type="danger" @click="startBannerPlacement" round>🎌 条幅</el-button>
 					</div>
 					</div>
 
@@ -153,7 +152,7 @@
 				<p class="confirm-color">颜色：<span :style="{ color: BANNER_COLORS[pendingBannerColor] || '#FF6B6B' }">{{ getBannerColorName(pendingBannerColor) }}</span></p>
 			</div>
 			<template #footer>
-				<el-button @click="bannerPosConfirmVisible = false">取消</el-button>
+				<el-button @click="cancelBannerPosConfirm">取消</el-button>
 				<el-button type="primary" @click="confirmBannerPosition">确定，配置内容</el-button>
 			</template>
 		</el-dialog>
@@ -269,21 +268,17 @@ const getCurrentGroupId = () => {
 // 条幅数据（必须在useCanvasEngine之前定义）
 const banners = ref<any[]>([])
 
-const {
-	waterVisible, watering,
-	fertilizeVisible, pickFertilizer, fertilizing, bagFertilizers,
-	bannerVisible, bannerContent, bannerColor, bannerAdding, bannerTemplates,
-	openWater, doWater,
-	openFertilize, doFertilize, doBatchFertilize,
-	openBanner, doAddBanner, selectTemplate,
-	loadBannerTemplates, loadBanners,
-} = useTreeActions(treesData, selectedTreeId, banners, classId, async () => { await refreshTrees(); refreshPanel() }, getCurrentGroupId)
+// 小组贡献相关（必须在loadGroupContributions之前定义）
+const groupLoading = ref(false)
+const groupLogsVisible = ref(false)
+const selectedGroup = ref<any>(null)
 
 const {
 	camera, canvasEl, containerEl, isPlantMode, isDraggingPlant,
 	groupContributions,
 	showBannerPanel, bannerPanelCollapsed, isDraggingBanner, dragBannerData,
-	selectedBannerColor, isBannerPlacing,
+	selectedBannerColor, isBannerPlacing, bannerPreviewX, bannerPreviewY,
+	isOnBannerPanel,
 	initCanvas, resizeCanvas, startRender, stopRender, rebuildRenderList,
 	onMouseDown, onMouseMove, onMouseUp, onWheel,
 	onTouchStart, onTouchMove, onTouchEnd,
@@ -292,6 +287,89 @@ const {
 	dragPlantTreeType, dragPlantWorldX, dragPlantWorldY, dragPlantValid,
 	refreshPanel, setGroupContributions, screenToWorld,
 } = useCanvasEngine(treesData, selectedTreeId, treeConfigs, banners)
+
+// 加载小组贡献数据
+const loadGroupContributions = async () => {
+	if (!classId.value) return
+	groupLoading.value = true
+	try {
+		const teacherInfo = uni.getStorageSync('teacherInfo')
+		const currentClass = teacherInfo?.classes?.find((c: any) => c.id === classId.value)
+		const storageGroups = currentClass?.groups || []
+
+		const res = await getGroupContributions(classId.value)
+
+		if (res.code === 1) {
+			let apiContributions = []
+			if (Array.isArray(res.data)) {
+				apiContributions = res.data
+			} else if (res.data?.contributions) {
+				apiContributions = res.data.contributions
+			} else if (typeof res.data === 'object') {
+				apiContributions = Object.values(res.data)
+			}
+
+			const contributionMap = new Map()
+			apiContributions.forEach((g: any) => {
+				const gid = g.group_id || g.id
+				if (gid) contributionMap.set(gid, g)
+			})
+
+			let contributions = []
+			if (storageGroups.length > 0) {
+				contributions = storageGroups.map((sg: any, index: number) => {
+					const apiData = contributionMap.get(sg.id)
+					if (apiData) {
+						return {
+							group_id: apiData.group_id || sg.id,
+							group_name: apiData.group_name || sg.name,
+							group_avatar: apiData.group_avatar || sg.description || '',
+							total_exp: apiData.total_exp || 0,
+							action_count: apiData.action_count || 0,
+							rank: 0,
+							recent_logs: apiData.recent_logs || []
+						}
+					} else {
+						return {
+							group_id: sg.id,
+							group_name: sg.name,
+							group_avatar: sg.description || '',
+							total_exp: 0,
+							action_count: 0,
+							rank: 0,
+							recent_logs: []
+						}
+					}
+				})
+			} else {
+				contributions = apiContributions.map((g: any) => ({
+					group_id: g.group_id || g.id,
+					group_name: g.group_name || g.name || `小组${g.group_id || g.id}`,
+					group_avatar: g.group_avatar || '',
+					total_exp: g.total_exp || 0,
+					action_count: g.action_count || 0,
+					rank: 0,
+					recent_logs: g.recent_logs || []
+				}))
+			}
+
+			contributions.sort((a: any, b: any) => b.total_exp - a.total_exp)
+			contributions.forEach((g: any, index: number) => { g.rank = index + 1 })
+			setGroupContributions(contributions)
+		}
+	} catch (e) { console.error('加载小组贡献榜失败:', e) }
+	finally { groupLoading.value = false }
+}
+
+const {
+	waterVisible, watering,
+	fertilizeVisible, pickFertilizer, fertilizing, bagFertilizers,
+	bannerVisible, bannerContent, bannerColor, bannerAdding, bannerTemplates,
+	openWater, doWater,
+	openFertilize, doFertilize, doBatchFertilize,
+	openBanner, doAddBanner, selectTemplate,
+	loadBannerTemplates, loadBanners,
+} = useTreeActions(treesData, selectedTreeId, banners, classId, async () => { await refreshTrees(); refreshPanel() }, loadGroupContributions, getCurrentGroupId)
 
 const plantConfirmVisible = ref(false)
 const pendingPlantType = ref('')
@@ -318,11 +396,6 @@ const plantConfirmX = ref(0)
 const plantConfirmY = ref(0)
 const planting = ref(false)
 
-// 小组贡献相关（使用Canvas引擎中的groupContributions）
-const groupLoading = ref(false)
-const groupLogsVisible = ref(false)
-const selectedGroup = ref<any>(null)
-
 const currentTree = computed(() => {
 	if (!selectedTreeId.value) return null
 	return treesData.value.find(t => t.id === selectedTreeId.value) || null
@@ -336,99 +409,6 @@ const expPercent = computed(() => {
 const availableFertilizers = computed(() => bagFertilizers.value.filter(f => (f.quantity || 0) > 0))
 
 const formatProgress = (p: number) => `${p}%`
-
-const loadGroupContributions = async () => {
-	if (!classId.value) return
-	groupLoading.value = true
-	try {
-		// 从storage获取当前班级的小组列表（作为备份数据源）
-		const teacherInfo = uni.getStorageSync('teacherInfo')
-		const currentClass = teacherInfo?.classes?.find((c: any) => c.id === classId.value)
-		const storageGroups = currentClass?.groups || []
-		console.log('Storage中的小组数据:', storageGroups)
-
-		const res = await getGroupContributions(classId.value)
-		console.log('小组贡献榜API返回:', res)
-
-		if (res.code === 1) {
-			// 适配不同可能的数据结构
-			let apiContributions = []
-			if (Array.isArray(res.data)) {
-				apiContributions = res.data
-			} else if (res.data?.contributions) {
-				apiContributions = res.data.contributions
-			} else if (typeof res.data === 'object') {
-				apiContributions = Object.values(res.data)
-			}
-
-			// 将API数据转换为Map便于查找
-			const contributionMap = new Map()
-			apiContributions.forEach((g: any) => {
-				const gid = g.group_id || g.id
-				if (gid) {
-					contributionMap.set(gid, g)
-				}
-			})
-
-			// 合并数据：优先使用API返回的数据，缺失的小组从storage补全
-			let contributions = []
-
-			if (storageGroups.length > 0) {
-				// 使用storage的小组列表作为基础，确保所有小组都显示
-				contributions = storageGroups.map((sg: any, index: number) => {
-					const apiData = contributionMap.get(sg.id)
-					if (apiData) {
-						// 有贡献数据，使用API数据
-						return {
-							group_id: apiData.group_id || sg.id,
-							group_name: apiData.group_name || sg.name,
-							group_avatar: apiData.group_avatar || sg.description || '',
-							total_exp: apiData.total_exp || 0,
-							action_count: apiData.action_count || 0,
-							rank: 0, // 稍后重新计算排名
-							recent_logs: apiData.recent_logs || []
-						}
-					} else {
-						// 没有贡献数据，使用storage数据并设置默认值
-						return {
-							group_id: sg.id,
-							group_name: sg.name,
-							group_avatar: sg.description || '',
-							total_exp: 0,
-							action_count: 0,
-							rank: 0,
-							recent_logs: []
-						}
-					}
-				})
-			} else {
-				// storage没有数据，直接使用API数据
-				contributions = apiContributions.map((g: any, index: number) => ({
-					group_id: g.group_id || g.id || 0,
-					group_name: g.group_name || g.name || `小组${index + 1}`,
-					group_avatar: g.group_avatar || '',
-					total_exp: g.total_exp || 0,
-					action_count: g.action_count || 0,
-					rank: 0,
-					recent_logs: g.recent_logs || []
-				}))
-			}
-
-			// 按贡献值排序（高的在前）
-			contributions.sort((a: any, b: any) => b.total_exp - a.total_exp)
-
-			// 重新计算排名
-			contributions.forEach((g: any, index: number) => {
-				g.rank = index + 1
-			})
-
-			console.log('合并后的小组贡献榜数据:', contributions)
-			// 使用Canvas引擎提供的方法更新数据
-			setGroupContributions(contributions)
-		}
-	} catch (e) { console.error('加载小组贡献榜失败:', e) }
-	finally { groupLoading.value = false }
-}
 
 const showGroupLogs = (group: any) => {
 	selectedGroup.value = group
@@ -515,6 +495,13 @@ const cancelBannerPlacement = () => {
 	bannerVisible.value = false
 }
 
+// 取消条幅位置确认
+const cancelBannerPosConfirm = () => {
+	bannerPosConfirmVisible.value = false
+	selectedBannerColor.value = null
+	isBannerPlacing.value = false
+}
+
 // 确认条幅位置（从位置确认弹窗点击确定后）
 const confirmBannerPosition = () => {
 	bannerPosConfirmVisible.value = false
@@ -533,6 +520,40 @@ const submitBanner = async () => {
 }
 
 const handleMouseUp = (e: MouseEvent) => {
+	// 条幅放置结束（像种树一样）
+	if (isBannerPlacing.value && selectedBannerColor.value) {
+		const rect = containerEl.value?.getBoundingClientRect()
+		if (!rect) {
+			cancelBannerPlacement()
+			return
+		}
+		const sx = e.clientX - rect.left
+		const sy = e.clientY - rect.top
+
+		// 如果是在条幅面板上松开，不处理
+		if (!isOnBannerPanel(sx, sy)) {
+			// 使用screenToWorld获取世界坐标
+			const { x: wx, y: wy } = screenToWorld(sx, sy)
+
+			if (wx && wy) {
+				pendingBannerX.value = Math.round(wx)
+				pendingBannerY.value = Math.round(wy)
+				pendingBannerColor.value = selectedBannerColor.value
+				bannerPosConfirmVisible.value = true
+				// 重置放置状态
+				selectedBannerColor.value = null
+				isBannerPlacing.value = false
+			} else {
+				ElMessage.warning('无法获取位置，请重新点击画布')
+				cancelBannerPlacement()
+			}
+			return
+		} else {
+			cancelBannerPlacement()
+			return
+		}
+	}
+
 	if (isDraggingPlant.value) {
 		const rect = containerEl.value?.getBoundingClientRect()
 		if (!rect) {
@@ -592,15 +613,10 @@ async function refreshTrees() {
 const loadGameResources = async () => {
 	isLoading.value = true
 	loadingProgress.value = 0
-	const steps = [
-		{ name: '加载图片资源', fn: () => preloadAllImages() },
-		{ name: '加载游戏数据', fn: () => new Promise(r => setTimeout(r, 300)) },
-		{ name: '初始化场景', fn: () => new Promise(r => setTimeout(r, 200)) },
-	]
-	for (let i = 0; i < steps.length; i++) {
-		await steps[i].fn()
-		loadingProgress.value = Math.round((i + 1) / steps.length * 100)
-	}
+
+	await preloadAllImages((progress) => {
+		loadingProgress.value = progress
+	})
 	isLoading.value = false
 }
 
@@ -644,19 +660,20 @@ const onGameOpened = () => {
 const handleClose = () => {
 	gameVisible.value = false
 	stopRender()
-	emit('gameClose', '')
+	emit('gameClose', 'tree')
 }
 
 const minimizeGame = () => {
 	isMinimized.value = true
 	gameVisible.value = false
 	stopRender()
-	emit('minimize', true)
+	emit('minimize', 'tree', true)
 }
 
 const restoreGame = () => {
 	isMinimized.value = false
-	emit('minimize', false)
+	gameVisible.value = true
+	emit('minimize', 'tree', false)
 	loadGameData()
 }
 

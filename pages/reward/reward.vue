@@ -177,6 +177,11 @@
 				</el-table-column>
 				<el-table-column prop="target_name" label="对象名称" width="120" />
 				<el-table-column prop="points" label="消耗积分" width="100" />
+				<el-table-column prop="num" label="数量" width="80">
+					<template #default="{ row }">
+						{{ row.num || 1 }}份
+					</template>
+				</el-table-column>
 				<el-table-column prop="week" label="周次" width="80" />
 				<el-table-column prop="exchange_time" label="兑换时间" width="180" />
 				<el-table-column prop="status" label="状态" width="120">
@@ -221,11 +226,11 @@
 	import { ref, onMounted, computed ,onUnmounted} from 'vue'
 	import { ElMessage, ElMessageBox } from 'element-plus'
 	import { Setting } from '@element-plus/icons-vue'
-	import { getRewardList, batchExchange, batchGrantGroup, getExchangeList, updateExchangeStatus as updateStatus, batchGrantToGameBag } from '@/api/request'
+	import { getRewardList, batchExchange, batchGrantGroup, getExchangeList, updateExchangeStatus as updateStatus, batchGrantToGameBag, batchGrantToTreeBag } from '@/api/request'
 	import RewardManager from './rewardManage'
 	import { useClassData } from '@/api/useClassData'
 	import { useScoreCalculator } from '@/api/useScoreCalculator'
-	import { isGameRewardType, getGameConfigByType } from './gameItemConfig'
+	import { isGameRewardType, getGameConfigByItemType } from './gameItemConfig'
 
 	// ---------- 复用 composables ----------
 	const { currentClass, className, semesterText, totalStudents, localStudents, localGroups, loadClassInfo, loadLocalData } = useClassData()
@@ -615,7 +620,8 @@ const updateExchangeStatus = async (row : any[]|object) => {
 	const formatType = (row : any) => getTypeName(row.reward_type)
 
 	const grantToGameBag = async (row: any,tip:boolean = true) => {
-		const config = getGameConfigByType(row.reward_type)
+		const config = getGameConfigByItemType(row.item_type, row.game_id)
+		console.log(row)
 		if (!config) {
 			ElMessage.error('未知的游戏商品类型')
 			return
@@ -623,17 +629,16 @@ const updateExchangeStatus = async (row : any[]|object) => {
 		try {
 			if(tip)
 			await ElMessageBox.confirm(
-				`确定将"${row.reward_name}"发放到 ${row.target_name} 的游戏背包吗？\n类型：${config.itemType === 'food' ? '食物' : '玩具'}`,
+				`确定将"${row.reward_name}"发放到 ${row.target_name} 的游戏背包吗？\n类型：${config.itemType === 'food' ? '食物' : config.itemType === 'toy' ? '玩具' : '肥料'}`,
 				'发放到游戏背包',
 				{ type: 'info' }
 			)
 		} catch { return }
 
 		try {
-			const res = await batchGrantToGameBag({
+			const grantData = {
 				class_id: currentClass.value?.id,
 				reward_id: row.reward_id,
-				game_id: config.gameId,
 				grants: [{
 					group_id: row.target_id,
 					item_type: config.itemType,
@@ -641,7 +646,16 @@ const updateExchangeStatus = async (row : any[]|object) => {
 					item_name: row.reward_name,
 					quantity: row.num || row.points || 1
 				}]
-			})
+			}
+			let res
+			if (row.game_id === 1) {
+				res = await batchGrantToGameBag(grantData)
+			} else if (row.game_id === 2) {
+				res = await batchGrantToTreeBag(grantData)
+			} else {
+				ElMessage.error('不支持的游戏类型')
+				return
+			}
 			if (res.code === 1) {
 				await updateStatus({ id: row.id, status: 1 })
 				if(tip){

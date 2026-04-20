@@ -53,18 +53,38 @@ const petGameRef = ref<InstanceType<typeof PetGame> | null>(null)
 const treeGameRef = ref<InstanceType<typeof TreeGame> | null>(null)
 
 // 监听子组件关闭游戏
-const handleGameClose = () => {
-	console.log('game close')
+const handleGameClose = (gameKey?: string) => {
+	console.log('game close', gameKey)
     currentGameId.value = 0
     activeGame.value = ''
+    // 通知首页游戏已关闭
+    setTimeout(() => {
+    	if (gameKey === 'pet') {
+    		uni.$emit('petGameMinimized', false)
+    	} else if (gameKey === 'tree') {
+    		uni.$emit('treeGameMinimized', false)
+    	}
+    }, 50)
 }
 
 // 监听子组件最小化游戏
-const handleMinimize = (minimized: boolean) => {
-	console.log('game handleMinimize', minimized)	
-
-	// activeGame.value = ''
-	// currentGameId.value = 0
+const handleMinimize = (gameKey: string, minimized: boolean) => {
+	console.log('game handleMinimize', gameKey, minimized)
+	if (minimized) {
+		activeGame.value = ''
+		currentGameId.value = 0
+		if (gameKey === 'pet') {
+			uni.$emit('petGameMinimized', true)
+		} else if (gameKey === 'tree') {
+			uni.$emit('treeGameMinimized', true)
+		}
+	} else {
+		if (gameKey === 'pet') {
+			uni.$emit('petGameMinimized', false)
+		} else if (gameKey === 'tree') {
+			uni.$emit('treeGameMinimized', false)
+		}
+	}
 }
 
 const gameList = [
@@ -86,8 +106,6 @@ const configGameName = computed(() => {
 
 const enterGame = (key: string) => {
 	console.log(activeGame.value)
-	if(key === 'pet') petGameRef.value?.restoreGame()
-	if(key === 'tree') treeGameRef.value?.restoreGame()
 	const game = gameList.find(g => g.key === key)
 	if (!game) return
 	

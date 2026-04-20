@@ -327,7 +327,7 @@
 	import { ElMessage } from 'element-plus'
 	import { Refresh, Minus, WarningFilled, Edit, Close } from '@element-plus/icons-vue'
 	import { getPetTypes, getPetList, syncPetDecay } from '@/api/request'
-	import { DECAY_CONFIG, IS_DEBUG, getProgressColor, getPetImgHTML, getEggImgHTML } from './scripts/petResources'
+	import { DECAY_CONFIG, IS_DEBUG, getProgressColor, getPetImgHTML, getEggImgHTML, preloadAllPetImages } from './scripts/petResources'
 	import { Sprite } from './scripts/types'
 	import { useMovement } from './composables/useMovement'
 	import { useDecay, useSync } from './composables/useGameLoop'
@@ -353,7 +353,7 @@
 	const selectedSprite = ref<Sprite | null>(null)
 	const farmRef = ref<HTMLElement | null>(null)
 	const gameInitialized = ref(false)
-	const emit = defineEmits(['gameClose'])
+	const emit = defineEmits(['gameClose', 'minimize'])
 	const eggSprites = computed(() => sprites.value.filter(s => !s.hasPet))
 	const petSprites = computed(() => sprites.value.filter(s => s.hasPet))
 	const availableFoods = computed(() => bagFoods.value.filter(f => (f.quantity || 0) > 0 && f.energy_add))
@@ -402,34 +402,78 @@
 		isLoading.value = true
 		loadingProgress.value = 0
 
-		const startTime = Date.now()
-		const minLoadingTime = 1000 // 最小加载时间 1 秒
-
-		// 模拟加载资源
-		const resources = ['宠物数据', '游戏资源', '场景加载']
-		for (let i = 0; i < resources.length; i++) {
-			const progress = (i + 1) / resources.length * 100
-			await new Promise(resolve => {
-				setTimeout(() => {
-					loadingProgress.value = Math.round(progress)
-					resolve(undefined)
-				}, 300)
-			})
-		}
-
-		// 确保最小加载时间
-		const elapsedTime = Date.now() - startTime
-		if (elapsedTime < minLoadingTime) {
-			await new Promise(resolve => {
-				setTimeout(resolve, minLoadingTime - elapsedTime)
-			})
-		}
-
-		// 完成加载
-		loadingProgress.value = 100
-		await new Promise(resolve => setTimeout(resolve, 300))
-
+		await preloadAllPetImages((progress) => {
+			loadingProgress.value = progress
+		})
 		isLoading.value = false
+	}
+
+	const enterGame = async () => {
+		if (gameInitialized.value) return
+		entering.value = true
+		try {
+			const cid = uni.getStorageSync('currentClassId')
+			if (!cid) { ElMessage.warning('请先选择班级'); return }
+			classId.value = cid
+			const info = uni.getStorageSync('teacherInfo')
+			className.value = info?.classes?.find((c : any) => c.id === cid)?.name || ''
+
+			await loadGameResources()
+
+			const [tRes, pRes] = await Promise.all([getPetTypes(), getPetList(cid)])
+			if (tRes.code === 1) petTypes.value = tRes.data
+			if (pRes.code === 1) {
+			pets.value = pRes.data
+			const now = Math.floor(Date.now() / 1000)
+			const decayPets: Array<{ pet_id: number; energy: number; mood: number }> = []
+
+			pets.value.forEach((pet: any) => {
+				if (!pet.has_pet || !pet.id) return
+
+				let energy = pet.energy ?? 60
+				let mood = pet.mood ?? 60
+
+				const lastFeed = pet.last_feed_at || now
+				const elapsedEnergy = now - lastFeed
+				if (elapsedEnergy > 0) {
+					const energyDecay = Math.floor(elapsedEnergy / energyDecaySecsPerPoint.value)
+					energy = Math.max(0, energy - energyDecay)
+				}
+
+				const lastInteract = pet.last_interact_at || now
+				const elapsedMood = now - lastInteract
+				if (elapsedMood > 0) {
+					const moodDecay = Math.floor(elapsedMood / moodDecaySecsPerPoint.value)
+					mood = Math.max(0, mood - moodDecay)
+				}
+
+				pet.energy = energy
+				pet.mood = mood
+
+				decayPets.push({
+					pet_id: pet.id,
+					energy: Math.round(energy),
+					mood: Math.round(mood)
+				})
+			})
+
+			if (decayPets.length > 0) {
+				try {
+					await syncPetDecay(cid, decayPets)
+				} catch (e) {
+					console.error('进入游戏时同步衰减数据失败', e)
+				}
+			}
+
+			buildSprites()
+		}
+		gameVisible.value = true
+		} catch (e) {
+			console.error(e)
+			ElMessage.error('进入游戏失败')
+			isLoading.value = false
+		}
+		finally { entering.value = false }
 	}
 
 	const openGame = async () => {
@@ -442,10 +486,8 @@
 			const info = uni.getStorageSync('teacherInfo')
 			className.value = info?.classes?.find((c : any) => c.id === cid)?.name || ''
 
-			// 先加载游戏资源
 			await loadGameResources()
 
-			// 加载完成后获取数据
 			const [tRes, pRes] = await Promise.all([getPetTypes(), getPetList(cid)])
 			if (tRes.code === 1) petTypes.value = tRes.data
 			if (pRes.code === 1) {
@@ -505,7 +547,7 @@
 	const onGameOpened = () => { gameInitialized.value = true; startMoveLoop(); startDecayLoop(); startSyncLoop() }
 	const onGameClose = () => {
 		stopMoveLoop(); stopDecayLoop(); stopSyncLoop();
-		if (!isMinimized.value) emit('gameClose', '');
+		if (!isMinimized.value) emit('gameClose', 'pet');
 		gameInitialized.value = false
 	}
 
@@ -515,12 +557,14 @@
 		stopMoveLoop()
 		stopDecayLoop()
 		stopSyncLoop()
+		emit('minimize', 'pet', true)
 		uni.$emit('petGameMinimized', true)
 	}
 
 	const restoreGame = () => {
 		isMinimized.value = false
 		gameVisible.value = true
+		emit('minimize', 'pet', false)
 		uni.$emit('petGameMinimized', false)
 		setTimeout(() => {
 			if (gameVisible.value) {
@@ -532,6 +576,7 @@
 	}
 	defineExpose({
 		restoreGame,
+		enterGame,
 	})
 	watch(decayCheckSec, () => { if (gameVisible.value) startDecayLoop() })
 	watch(syncToServerSec, () => { if (gameVisible.value) startSyncLoop() })

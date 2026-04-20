@@ -371,6 +371,10 @@ export const batchGrantToGameBag = (data: { class_id: number; grants: Array<{ gr
   return request({ url: '/stu/gamePet/batchGrantToBag', method: 'POST', data })
 }
 
+export const batchGrantToTreeBag = (data: { class_id: number; grants: Array<{ group_id: number; item_type: string; item_code: string; item_name: string; quantity: number }> }) => {
+  return request({ url: '/stu/treeGame/batchGrantToBag', method: 'POST', data })
+}
+
 // ==================== 宠物游戏配置相关 API ====================
 
 export const getPetConfigs = (params: { class_id?: number; game_id?: number }) => {
@@ -461,10 +465,6 @@ export const getBannerTemplates = () => {
 
 export const grantToTreeBag = (data: { class_id: number; group_id: number; item_type: string; item_code: string; item_name: string; quantity: number }) => {
   return request({ url: '/stu/treeGame/grantToBag', method: 'POST', data })
-}
-
-export const batchGrantToTreeBag = (data: { class_id: number; grants: Array<{ group_id: number; item_type: string; item_code: string; item_name: string; quantity: number }> }) => {
-  return request({ url: '/stu/treeGame/batchGrantToBag', method: 'POST', data })
 }
 
 export const getGroupContributions = (classId: number) => {

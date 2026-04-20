@@ -84,7 +84,7 @@ export interface TreeRenderData {
 export const WORLD_WIDTH = 2505
 export const WORLD_HEIGHT = 1667
 export const MIN_TREE_DISTANCE = 80
-export const MIN_ZOOM = 0.5
+export const MIN_ZOOM = 0.25
 export const MAX_ZOOM = 2.0
 export const LEVEL_EXP_MAP: Record<number, number> = {
 	1: 100, 2: 150, 3: 220, 4: 310, 5: 420,
