@@ -1,6 +1,6 @@
 import { ref, Ref, onUnmounted } from 'vue'
 import { Camera, TreeData, TreeRenderData, WORLD_WIDTH, WORLD_HEIGHT, MIN_ZOOM, MAX_ZOOM, MIN_TREE_DISTANCE, BannerData, TreeConfig } from '../scripts/types'
-import { buildTreeRenderData, drawBackgroundOnCanvas, drawTreeOnCanvas, isPointNearTree, getImage, getImgSrc, calculateInitialZoom, IMG_BASE, MIN_TREE_DISTANCE_X, drawGroupContributionPanel, GroupContribution, updateWindTime, getWindTime, drawBanners, BG_CONFIG } from '../scripts/treeResources'
+import { buildTreeRenderData, drawBackgroundOnCanvas, drawTreeOnCanvas, isPointNearTree, getImage, getImgSrc, calculateInitialZoom, IMG_BASE, MIN_TREE_DISTANCE_X, drawGroupContributionPanel, GroupContribution, updateWindTime, getWindTime, drawBanners, BG_CONFIG, startBannerAnimation, stopBannerAnimation } from '../scripts/treeResources'
 import { TREE_PANEL_CONFIG, TREE_SIZE_CONFIG } from '../scripts/resourceConfig'
 
 // 条幅面板配置
@@ -71,6 +71,7 @@ export function useCanvasEngine(
 
 	const showTreePanel = ref(true)
 	const showGroupPanel = ref(true)
+	const groupPanelCollapsed = ref(false)
 	const groupContributions = ref<GroupContribution[]>([])
 	const panelCards: { type: string; name: string; unlocked: boolean; hint: string; icon: string; lockedIcon: string }[] = []
 
@@ -417,6 +418,25 @@ export function useCanvasEngine(
 			sy >= panelY && sy <= panelY + panelHeight
 	}
 
+	// 检测点击是否在小组贡献榜面板上
+	const isOnGroupPanel = (sx: number, sy: number): boolean => {
+		if (!showGroupPanel.value) return false
+		const rowHeight = 45
+		if (groupPanelCollapsed.value) {
+			const panelWidth = 50
+			const panelHeight = 180
+			const panelX = 10
+			const panelY = (canvasH - panelHeight) / 2
+			return sx >= panelX && sx <= panelX + panelWidth && sy >= panelY && sy <= panelY + panelHeight
+		} else {
+			const panelWidth = 200
+			const panelHeight = Math.min(groupContributions.value.length * rowHeight + 60, 500)
+			const panelX = 10
+			const panelY = (canvasH - panelHeight) / 2
+			return sx >= panelX && sx <= panelX + panelWidth && sy >= panelY && sy <= panelY + panelHeight
+		}
+	}
+
 	// 获取条幅面板上点击的颜色
 	const getBannerColorAt = (sx: number, sy: number): string | null => {
 		if (!showBannerPanel.value || bannerPanelCollapsed.value) return null
@@ -621,7 +641,7 @@ export function useCanvasEngine(
 		// 绘制小组贡献榜（在屏幕坐标中）
 		console.log('render check - showGroupPanel:', showGroupPanel.value, 'contributions:', groupContributions.value.length)
 		if (showGroupPanel.value && groupContributions.value.length > 0) {
-			drawGroupContributionPanel(ctx, groupContributions.value, canvasW * dpr, canvasH * dpr, dpr)
+			drawGroupContributionPanel(ctx, groupContributions.value, canvasW * dpr, canvasH * dpr, dpr, groupPanelCollapsed.value)
 		}
 
 		// 绘制条幅选择面板（右侧，屏幕坐标）
@@ -635,11 +655,14 @@ export function useCanvasEngine(
 
 	const renderLoop = () => {
 		render()
-		animFrameId.value = requestAnimationFrame(renderLoop)
+		setTimeout(() => {
+			animFrameId.value = requestAnimationFrame(renderLoop)
+		}, 66)
 	}
 
 	const startRender = () => {
 		if (animFrameId.value) cancelAnimationFrame(animFrameId.value)
+		startBannerAnimation()
 		renderLoop()
 	}
 
@@ -648,6 +671,7 @@ export function useCanvasEngine(
 			cancelAnimationFrame(animFrameId.value)
 			animFrameId.value = 0
 		}
+		stopBannerAnimation()
 	}
 
 	const getRect = () => {
@@ -748,33 +772,34 @@ export function useCanvasEngine(
 		const sy = e.clientY - rect.top
 
 		// 检测条幅面板点击
-	if (showBannerPanel.value && isOnBannerPanel(sx, sy)) {
-		const colors = Object.keys(BANNER_COLORS)
-		const panelWidth = bannerPanelCollapsed.value ? 50 : 70
-		const panelHeight = colors.length * 45 + 50
-		const panelX = canvasW - panelWidth - 10
-		const panelY = (canvasH - panelHeight) / 2
+		if (showBannerPanel.value && isOnBannerPanel(sx, sy)) {
+			const colors = Object.keys(BANNER_COLORS)
+			const panelWidth = bannerPanelCollapsed.value ? 50 : 70
+			const panelHeight = colors.length * 45 + 50
+			const panelX = canvasW - panelWidth - 10
+			const panelY = (canvasH - panelHeight) / 2
 
-		// 如果是展开状态
-		if (!bannerPanelCollapsed.value) {
-			// 点击展开/收起按钮（底部区域）
-			if (sy >= panelY + panelHeight - 25 && sy <= panelY + panelHeight) {
-				bannerPanelCollapsed.value = !bannerPanelCollapsed.value
-				return
+			if (!bannerPanelCollapsed.value) {
+				if (sy >= panelY + panelHeight - 25 && sy <= panelY + panelHeight) {
+					bannerPanelCollapsed.value = !bannerPanelCollapsed.value
+					return
+				}
+				const color = getBannerColorAt(sx, sy)
+				if (color) {
+					selectedBannerColor.value = color
+					isBannerPlacing.value = true
+				}
+			} else {
+				bannerPanelCollapsed.value = false
 			}
-
-			// 点击颜色卡片，选中颜色
-			const color = getBannerColorAt(sx, sy)
-			if (color) {
-				selectedBannerColor.value = color
-				isBannerPlacing.value = true
-			}
-		} else {
-			// 收缩状态：点击任意位置都展开面板
-			bannerPanelCollapsed.value = false
+			return
 		}
-		return
-	}
+
+		// 检测小组贡献榜面板点击
+		if (showGroupPanel.value && isOnGroupPanel(sx, sy)) {
+			groupPanelCollapsed.value = !groupPanelCollapsed.value
+			return
+		}
 
 		// 如果正在选择条幅位置，点击画面时不阻止默认行为
 		// 坐标获取在 handleMouseUp 中处理
@@ -1046,6 +1071,7 @@ export function useCanvasEngine(
 		plantPreviewBounced,
 		showTreePanel,
 		showGroupPanel,
+		groupPanelCollapsed,
 		groupContributions,
 		panelCards,
 		// 条幅相关

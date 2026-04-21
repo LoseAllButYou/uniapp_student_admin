@@ -471,13 +471,13 @@ function getSubBranchCount(depth: number, level: number, rng: () => number): num
 }
 
 function getLeafCount(level: number, depth: number, maxDepth: number, rng: () => number): number {
-	const levelBonus = Math.floor(level * 0.3)
+	const levelBonus = Math.floor(level * 0.2)
 	if (depth <= 2) {
-		return (8 + levelBonus * 2) + Math.floor(rng() * 4)
+		return Math.floor(((6 + levelBonus * 2) + Math.floor(rng() * 3)) * 2 / 3)
 	} else if (depth === 3) {
-		return (4 + levelBonus) + Math.floor(rng() * 2)
+		return Math.floor(((3 + levelBonus) + Math.floor(rng() * 2)) * 2 / 3)
 	} else if (depth === 4) {
-		return Math.max(0, (4 + levelBonus - 4) + Math.floor(rng() * 2))
+		return Math.floor(Math.max(0, (3 + levelBonus - 3) + Math.floor(rng() * 2)) * 2 / 3)
 	}
 	return 0
 }
@@ -568,22 +568,38 @@ function generateBranchRecursive(
 		const leafProbability = 0.3 + depthRatio * 0.7
 
 		const leafCount = getLeafCount(treeLevel, depth, maxDepth, rng)
+		const usedAngles: number[] = []
 		for (let i = 0; i < leafCount; i++) {
-			const t = rng()
+			let leafAngle: number
+			let attempts = 0
+			do {
+				leafAngle = rng() * Math.PI * 2
+				attempts++
+			} while (usedAngles.some(a => Math.abs(a - leafAngle) < 0.5 || Math.abs(a - leafAngle) > Math.PI * 2 - 0.5) && attempts < 10)
+			usedAngles.push(leafAngle)
+
+			const t = 0.2 + (i / Math.max(1, leafCount - 1)) * 0.6
 			const lx = startX + (endX - startX) * t
 			const ly = startY + (endY - startY) * t
-			const leafAngle = rng() * Math.PI * 2
 			const leafSize = TREE_CONFIG.baseLeafSize * (0.8 + rng() * 0.5) * (1 + treeLevel * 0.05)
 			branch.leaves.push({ x: lx, y: ly, angle: leafAngle, size: leafSize })
 		}
 
 		if (depthRatio >= 0.3 && rng() < leafProbability * 0.8) {
 			const clusterCount = treeLevel <= 3 ? 2 : 3 + Math.floor(rng() * 3)
+			const clusterAngles: number[] = []
 			for (let i = 0; i < clusterCount; i++) {
-				const t = rng()
+				let leafAngle: number
+				let attempts = 0
+				do {
+					leafAngle = rng() * Math.PI * 2
+					attempts++
+				} while (clusterAngles.some(a => Math.abs(a - leafAngle) < 0.6 || Math.abs(a - leafAngle) > Math.PI * 2 - 0.6) && attempts < 10)
+				clusterAngles.push(leafAngle)
+
+				const t = 0.3 + (i / Math.max(1, clusterCount - 1)) * 0.4
 				const cx = startX + (endX - startX) * t
 				const cy = startY + (endY - startY) * t
-				const leafAngle = rng() * Math.PI * 2
 				const leafSize = TREE_CONFIG.baseLeafSize * (0.6 + rng() * 0.4) * (1 + treeLevel * 0.04)
 				branch.leaves.push({ x: cx, y: cy, angle: leafAngle, size: leafSize })
 			}
@@ -695,7 +711,6 @@ function getTreeBoundingBox(tree: TreeRenderData): { minX: number; maxX: number;
 	return { minX, maxX, minY, maxY }
 }
 
-// 全局摇摆时间偏移
 let windTime = 0
 
 export function updateWindTime(delta: number = 0.016): void {
@@ -706,6 +721,30 @@ export function getWindTime(): number {
 	return windTime
 }
 
+let bannerAnimTime = 0
+let bannerAnimId = 0
+
+export function startBannerAnimation(): void {
+	const animate = () => {
+		bannerAnimTime += 0.016
+		bannerAnimId = requestAnimationFrame(animate)
+	}
+	if (!bannerAnimId) {
+		animate()
+	}
+}
+
+export function stopBannerAnimation(): void {
+	if (bannerAnimId) {
+		cancelAnimationFrame(bannerAnimId)
+		bannerAnimId = 0
+	}
+}
+
+export function getBannerAnimTime(): number {
+	return bannerAnimTime
+}
+
 export function drawTreeOnCanvas(
 	ctx: CanvasRenderingContext2D,
 	tree: TreeRenderData,
@@ -713,10 +752,9 @@ export function drawTreeOnCanvas(
 	dpr: number = 1,
 	windOffset: number = 0
 ): void {
-	// 树木在世界坐标系中的位置
 	const sx = tree.worldX
 	const sy = tree.worldY
-	const scale = 1 // 缩放由外部ctx.scale控制
+	const scale = 1
 
 	const colors = getTreeColors(tree.treeType)
 	const trunkImg = getImageByType(tree.treeType, 'trunk')
@@ -727,16 +765,10 @@ export function drawTreeOnCanvas(
 	ctx.translate(sx, sy)
 	ctx.scale(scale, scale)
 
-	// 应用随风摇摆效果（树干轻微摇摆）
-	if (windOffset !== 0) {
-		const swayAngle = windOffset * 0.02  // 最大摇摆角度
-		ctx.rotate(swayAngle)
-	}
-
 	drawTrunk(ctx, tree.trunkHeight, tree.trunkThickness, colors.trunk, trunkImg)
 
 	const branches = tree.branches as any as TreeBranch[]
-	drawAllBranches(ctx, branches, colors, tree.treeType, branchImg, leafImg, windOffset)
+	drawAllBranches(ctx, branches, colors, tree.treeType, branchImg, leafImg)
 
 	// 选中时绘制绿色实线轮廓，加粗显眼
 	if (selected) {
@@ -805,17 +837,21 @@ export function drawBanners(
 		ctx.save()
 		ctx.translate(sx, sy)
 
-		// 条幅晃动特效
-		const swayAngle = Math.sin(windTime * 2 + index * 0.5) * 0.05
+		const swayAngle = Math.sin(getBannerAnimTime() * 3 + index * 0.5) * 0.1
 		ctx.rotate(swayAngle)
 
 		// 条幅大小随dpr调整
 		const bannerScale = dpr
 		ctx.scale(bannerScale, bannerScale)
 
-		// 绘制条幅背景（竖向条幅）
-		const bannerWidth = 60
-		const bannerHeight = 160
+		// 绘制条幅背景（竖向条幅，根据文字动态计算高度）
+		const text = banner.content.length > 6 ? banner.content.slice(0, 6) + '…' : banner.content
+		const charSpacing = 42
+		const startY = 15
+		const textHeight = text.length * charSpacing
+		const bannerHeight = startY + textHeight + 30
+		const bannerWidth = 100
+
 		ctx.fillStyle = color
 		ctx.beginPath()
 		ctx.moveTo(-bannerWidth / 2, 0)
@@ -833,12 +869,9 @@ export function drawBanners(
 
 		// 绘制文字（竖向排列，从上往下）
 		ctx.fillStyle = banner.text_color || '#fff'
-		ctx.font = `${banner.text_bold ? 'bold' : 'normal'} 24px sans-serif`
+		ctx.font = `${banner.text_bold ? 'bold' : 'normal'} 36px sans-serif`
 		ctx.textAlign = 'center'
 		ctx.textBaseline = 'top'
-		const text = banner.content.length > 6 ? banner.content.slice(0, 6) + '…' : banner.content
-		const charSpacing = 26 // 字间距
-		const startY = 15 // 起始Y位置
 		for (let i = 0; i < text.length; i++) {
 			ctx.fillText(text[i], 0, startY + i * charSpacing)
 		}
@@ -883,15 +916,11 @@ function drawAllBranches(
 	colors: { trunk: string; canopy: string; highlight: string },
 	treeType: string,
 	branchImg: HTMLImageElement | null,
-	leafImg: HTMLImageElement | null,
-	windOffset: number = 0
+	leafImg: HTMLImageElement | null
 ): void {
 	const sorted = [...branches].sort((a, b) => a.depth - b.depth)
 
 	for (const branch of sorted) {
-		// 计算摇摆偏移（越深层的树枝摇摆越大）
-		const branchSway = windOffset * (0.01 + branch.depth * 0.005)
-
 		if (branchImg && branchImg.complete && branchImg.naturalWidth > 0) {
 			const dx = branch.endX - branch.startX
 			const dy = branch.endY - branch.startY
@@ -900,7 +929,7 @@ function drawAllBranches(
 
 			ctx.save()
 			ctx.translate(branch.startX, branch.startY)
-			ctx.rotate(angle + branchSway)
+			ctx.rotate(angle)
 
 			const drawW = len
 			const drawH = branch.thickness * 2
@@ -909,10 +938,8 @@ function drawAllBranches(
 		} else {
 			ctx.save()
 			ctx.beginPath()
-			// 应用摇摆到终点坐标
-			const swayedEndX = branch.endX + branchSway * 20
 			ctx.moveTo(branch.startX, branch.startY)
-			ctx.lineTo(swayedEndX, branch.endY)
+			ctx.lineTo(branch.endX, branch.endY)
 			ctx.strokeStyle = branch.depth > 5 ? colors.trunk : colors.canopy
 			ctx.lineWidth = branch.thickness
 			ctx.lineCap = 'round'
@@ -923,9 +950,7 @@ function drawAllBranches(
 		for (const leaf of branch.leaves) {
 			ctx.save()
 			ctx.translate(leaf.x, leaf.y)
-			// 叶子有更明显的摇摆效果
-			const leafSway = windOffset * 0.3 + Math.sin(windTime * 2 + leaf.x * 0.1) * 0.1
-			ctx.rotate(leaf.angle + leafSway)
+			ctx.rotate(leaf.angle)
 			drawLeaf(ctx, leaf.size, colors, treeType, leafImg)
 			ctx.restore()
 		}
@@ -1159,101 +1184,116 @@ export function drawGroupContributionPanel(
 	contributions: GroupContribution[],
 	canvasWidth: number,
 	canvasHeight: number,
-	dpr: number = 1
+	dpr: number = 1,
+	collapsed: boolean = false
 ): void {
-	const panelWidth = 200 * dpr
+	const panelWidth = 50 * dpr
 	const panelX = 10 * dpr
 	const rowHeight = 45 * dpr
 
 	ctx.save()
 
-	// 绘制面板背景
-	ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
-	ctx.strokeStyle = '#4CAF50'
-	ctx.lineWidth = 2 * dpr
-	// 高度动态计算，确保能显示所有小组
-	const panelHeight = Math.min(contributions.length * rowHeight + 60 * dpr, 500 * dpr)
-	const panelY = canvasHeight / 2 - panelHeight / 2
+	if (collapsed) {
+		const panelHeight = 180 * dpr
+		const panelY = canvasHeight / 2 - panelHeight / 2
 
-	// 绘制圆角矩形背景
-	ctx.beginPath()
-	ctx.roundRect(panelX, panelY, panelWidth, panelHeight, 12 * dpr)
-	ctx.fill()
-	ctx.stroke()
+		ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
+		ctx.strokeStyle = '#4CAF50'
+		ctx.lineWidth = 2 * dpr
+		ctx.beginPath()
+		ctx.roundRect(panelX, panelY, panelWidth, panelHeight, 12 * dpr)
+		ctx.fill()
+		ctx.stroke()
 
-	// 绘制标题
-	ctx.fillStyle = '#4CAF50'
-	ctx.font = `bold ${14 * dpr}px sans-serif`
-	ctx.textAlign = 'center'
-	ctx.textBaseline = 'top'
-	ctx.fillText('🏆 小组贡献榜', panelX + panelWidth / 2, panelY + 10 * dpr)
-
-	// 绘制分割线
-	ctx.strokeStyle = '#e0e0e0'
-	ctx.lineWidth = 1 * dpr
-	ctx.beginPath()
-	ctx.moveTo(panelX + 10 * dpr, panelY + 35 * dpr)
-	ctx.lineTo(panelX + panelWidth - 10 * dpr, panelY + 35 * dpr)
-	ctx.stroke()
-
-	// 绘制各小组数据
-	const startY = panelY + 45 * dpr
-	const maxItems = contributions.length
-
-	contributions.slice(0, maxItems).forEach((group, index) => {
-		const y = startY + index * rowHeight
-		const centerY = y + rowHeight / 2
-
-		// 前三名特殊背景
-		if (index < 3) {
-			ctx.fillStyle = index === 0 ? 'rgba(255, 215, 0, 0.15)' : index === 1 ? 'rgba(192, 192, 192, 0.15)' : 'rgba(205, 127, 50, 0.15)'
-			ctx.beginPath()
-			ctx.roundRect(panelX + 5 * dpr, y, panelWidth - 10 * dpr, rowHeight - 3 * dpr, 6 * dpr)
-			ctx.fill()
-		}
-
-		// 绘制排名图标
-		ctx.font = `${14 * dpr}px sans-serif`
-		ctx.textAlign = 'center'
-		ctx.textBaseline = 'middle'
-		if (index === 0) {
-			ctx.fillText('🥇', panelX + 18 * dpr, centerY)
-		} else if (index === 1) {
-			ctx.fillText('🥈', panelX + 18 * dpr, centerY)
-		} else if (index === 2) {
-			ctx.fillText('🥉', panelX + 18 * dpr, centerY)
-		} else {
-			ctx.fillStyle = '#666'
-			ctx.font = `bold ${11 * dpr}px sans-serif`
-			ctx.fillText(String(index + 1), panelX + 18 * dpr, centerY)
-		}
-
-		// 绘制小组名称
-		ctx.fillStyle = '#333'
-		ctx.font = `bold ${12 * dpr}px sans-serif`
-		ctx.textAlign = 'left'
-		ctx.textBaseline = 'middle'
-		const name = group.group_name.length > 6 ? group.group_name.slice(0, 6) + '..' : group.group_name
-		ctx.fillText(name, panelX + 35 * dpr, centerY)
-
-		// 绘制贡献值（合并显示：+50贡献值）
 		ctx.fillStyle = '#4CAF50'
 		ctx.font = `bold ${12 * dpr}px sans-serif`
-		ctx.textAlign = 'right'
-		const expText = `+${group.total_exp}`
-		const labelText = '贡献值'
-		const expWidth = ctx.measureText(expText).width
-		ctx.fillText(expText, panelX + panelWidth - 50 * dpr, centerY)
-		ctx.fillStyle = '#999'
-		ctx.font = `${10 * dpr}px sans-serif`
-		ctx.fillText(labelText, panelX + panelWidth - 10 * dpr, centerY)
+		ctx.textAlign = 'center'
+		ctx.textBaseline = 'middle'
+		const title = '小组贡献榜'
+		const charSpacing = 22 * dpr
+		const startY = panelY + panelHeight / 2 - (title.length * charSpacing) / 2
+		for (let i = 0; i < title.length; i++) {
+			ctx.fillText(title[i], panelX + panelWidth / 2, startY + i * charSpacing)
+		}
+	} else {
+		const panelWidth = 200 * dpr
+		const panelX = 10 * dpr
 
-		// 绘制次数
-		ctx.fillStyle = '#999'
-		ctx.font = `${9 * dpr}px sans-serif`
-		ctx.textAlign = 'left'
-		ctx.fillText(`${group.action_count}次`, panelX + 35 * dpr, centerY + 14 * dpr)
-	})
+		ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
+		ctx.strokeStyle = '#4CAF50'
+		ctx.lineWidth = 2 * dpr
+		const panelHeight = Math.min(contributions.length * rowHeight + 60 * dpr, 500 * dpr)
+		const panelY = canvasHeight / 2 - panelHeight / 2
+
+		ctx.beginPath()
+		ctx.roundRect(panelX, panelY, panelWidth, panelHeight, 12 * dpr)
+		ctx.fill()
+		ctx.stroke()
+
+		ctx.fillStyle = '#4CAF50'
+		ctx.font = `bold ${14 * dpr}px sans-serif`
+		ctx.textAlign = 'center'
+		ctx.textBaseline = 'top'
+		ctx.fillText('🏆 小组贡献榜', panelX + panelWidth / 2, panelY + 10 * dpr)
+
+		ctx.strokeStyle = '#e0e0e0'
+		ctx.lineWidth = 1 * dpr
+		ctx.beginPath()
+		ctx.moveTo(panelX + 10 * dpr, panelY + 35 * dpr)
+		ctx.lineTo(panelX + panelWidth - 10 * dpr, panelY + 35 * dpr)
+		ctx.stroke()
+
+		const startY = panelY + 45 * dpr
+		const maxItems = contributions.length
+
+		contributions.slice(0, maxItems).forEach((group, index) => {
+			const y = startY + index * rowHeight
+			const centerY = y + rowHeight / 2
+
+			if (index < 3) {
+				ctx.fillStyle = index === 0 ? 'rgba(255, 215, 0, 0.15)' : index === 1 ? 'rgba(192, 192, 192, 0.15)' : 'rgba(205, 127, 50, 0.15)'
+				ctx.beginPath()
+				ctx.roundRect(panelX + 5 * dpr, y, panelWidth - 10 * dpr, rowHeight - 3 * dpr, 6 * dpr)
+				ctx.fill()
+			}
+
+			ctx.font = `${14 * dpr}px sans-serif`
+			ctx.textAlign = 'center'
+			ctx.textBaseline = 'middle'
+			if (index === 0) {
+				ctx.fillText('🥇', panelX + 18 * dpr, centerY)
+			} else if (index === 1) {
+				ctx.fillText('🥈', panelX + 18 * dpr, centerY)
+			} else if (index === 2) {
+				ctx.fillText('🥉', panelX + 18 * dpr, centerY)
+			} else {
+				ctx.fillStyle = '#666'
+				ctx.font = `bold ${11 * dpr}px sans-serif`
+				ctx.fillText(String(index + 1), panelX + 18 * dpr, centerY)
+			}
+
+			ctx.fillStyle = '#333'
+			ctx.font = `bold ${12 * dpr}px sans-serif`
+			ctx.textAlign = 'left'
+			ctx.textBaseline = 'middle'
+			const name = group.group_name.length > 6 ? group.group_name.slice(0, 6) + '..' : group.group_name
+			ctx.fillText(name, panelX + 35 * dpr, centerY)
+
+			ctx.fillStyle = '#4CAF50'
+			ctx.font = `bold ${12 * dpr}px sans-serif`
+			ctx.textAlign = 'right'
+			const expText = `+${group.total_exp}`
+			ctx.fillText(expText, panelX + panelWidth - 50 * dpr, centerY)
+			ctx.fillStyle = '#999'
+			ctx.font = `${10 * dpr}px sans-serif`
+			ctx.fillText('贡献值', panelX + panelWidth - 10 * dpr, centerY)
+
+			ctx.fillStyle = '#999'
+			ctx.font = `${9 * dpr}px sans-serif`
+			ctx.textAlign = 'left'
+			ctx.fillText(`${group.action_count}次`, panelX + 35 * dpr, centerY + 14 * dpr)
+		})
+	}
 
 	ctx.restore()
 }
